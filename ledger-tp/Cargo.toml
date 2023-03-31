@@ -8,7 +8,7 @@ name = "simple_ledger"
 path = "src/lib.rs"
 
 [[bin]]
-name = "ledger-tp"
+name = "app"
 path = "src/main.rs"
 
 [dependencies]

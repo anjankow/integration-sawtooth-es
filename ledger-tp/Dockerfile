@@ -1,6 +1,9 @@
-FROM rust:1.67
+### -> stage build to dowload app dependencies
+FROM rust:1.67 as base
 
-#### from https://github.com/hyperledger/sawtooth-core/blob/7651cb5552800dbac98559b46339a84eae472ef7/families/smallbank/smallbank_rust/Dockerfile
+###
+### from https://github.com/hyperledger/sawtooth-core/blob/7651cb5552800dbac98559b46339a84eae472ef7/families/smallbank/smallbank_rust/Dockerfile
+###
 RUN apt-get update \
  && apt-get install -y \
  curl \
@@ -17,15 +20,89 @@ RUN curl -OLsS https://github.com/google/protobuf/releases/download/v3.5.1/proto
 
 ENV PATH=$PATH:/protoc3/bin \
     CARGO_INCREMENTAL=0
+###
 ### end from https://github.com/hyperledger/sawtooth-core/blob/7651cb5552800dbac98559b46339a84eae472ef7/families/smallbank/smallbank_rust/Dockerfile
+###
+
+### -> stage dev to work within a vscode container
+FROM base as dev
+
+###
+### from https://github.com/allaboutapps/go-starter/blob/go-starter-2023-03-03/Dockerfile
+###
+
+# Install required system dependencies
+RUN apt-get update \
+    && apt-get install -y \
+    ca-certificates \
+    apt-utils \
+    dialog \
+    openssh-client \
+    less \
+    iproute2 \
+    procps \
+    lsb-release \
+    locales \
+    sudo \
+    bash-completion \
+    bsdmainutils \
+    icu-devtools \
+    && apt-get clean
+
+# env/vscode support: LANG must be supported, requires installing the locale package first
+# https://github.com/Microsoft/vscode/issues/58015
+# https://stackoverflow.com/questions/28405902/how-to-set-the-locale-inside-a-debian-ubuntu-docker-container
+RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
+    dpkg-reconfigure --frontend=noninteractive locales && \
+    update-locale LANG=en_US.UTF-8
+
+ENV LANG en_US.UTF-8
+
+# linux permissions / vscode support: Add user to avoid linux file permission issues
+# Detail: Inside the container, any mounted files/folders will have the exact same permissions
+# as outside the container - including the owner user ID (UID) and group ID (GID). 
+# Because of this, your container user will either need to have the same UID or be in a group with the same GID.
+# The actual name of the user / group does not matter. The first user on a machine typically gets a UID of 1000,
+# so most containers use this as the ID of the user to try to avoid this problem.
+# 2020-04: docker-compose does not support passing id -u / id -g as part of its config, therefore we assume uid 1000
+# https://code.visualstudio.com/docs/remote/containers-advanced#_adding-a-nonroot-user-to-your-dev-container
+# https://code.visualstudio.com/docs/remote/containers-advanced#_creating-a-nonroot-user
+ARG USERNAME=development
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+RUN groupadd --gid $USER_GID $USERNAME \
+    && useradd -s /bin/bash --uid $USER_UID --gid $USER_GID -m $USERNAME \
+    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+    && chmod 0440 /etc/sudoers.d/$USERNAME
+
+# vscode support: cached extensions install directory
+# https://code.visualstudio.com/docs/remote/containers-advanced#_avoiding-extension-reinstalls-on-container-rebuild
+RUN mkdir -p /home/$USERNAME/.vscode-server/extensions \
+    /home/$USERNAME/.vscode-server-insiders/extensions \
+    && chown -R $USERNAME \
+    /home/$USERNAME/.vscode-server \
+    /home/$USERNAME/.vscode-server-insiders
+###
+### end from https://github.com/allaboutapps/go-starter/blob/go-starter-2023-03-03/Dockerfile
+###
 
 WORKDIR /project
+
+### -> stage release to build container running the app
+FROM base as release
+
 COPY Cargo.toml .
 
 RUN cargo fetch
 
 COPY ./src ./src
 
-RUN cargo install --path .
+# install all binaries
+RUN cargo install --bins \
+    # from the crate in path .
+    --path . \
+    # into directory .
+     --root .
 
-CMD ["target/release/ledger-tp"]
+CMD ["app"]
