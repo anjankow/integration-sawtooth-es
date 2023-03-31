@@ -1,0 +1,36 @@
+syntax = "proto3";
+// option go_package = "ledger_pb2";
+
+
+enum Currency {
+    CURRENCY_EUR = 0;
+    // złoty
+    CURRENCY_PLN = 1;
+    // peso chileno
+    CURRENCY_CLP = 2;
+}
+
+message AccountIndication {
+    string account_id = 1;
+    string wallet_id = 2;
+}
+
+message LedgerTransactionPayload {
+    message CreateWalletPayload {
+        string id = 1;
+        string name = 2;
+    }
+
+    message CreateAccountPayload {
+        string id = 1;
+        string wallet_id = 2;
+        Currency currency = 3;
+    }
+    
+    message TransferPayload {
+        AccountIndication From = 1;
+        AccountIndication To = 2;
+
+        uint64 value = 3;
+    }
+}
