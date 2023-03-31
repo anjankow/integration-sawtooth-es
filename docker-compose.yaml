@@ -23,16 +23,28 @@ services:
 
   settings-tp:
     image: hyperledger/sawtooth-settings-tp:chime
-    container_name: sawtooth-settings-tp-default
+    container_name: blkchn/settings-tp
     depends_on:
       - validator
     entrypoint: settings-tp -vv -C tcp://validator:4004
     logging:
       driver: none
 
+  ledger-tp:
+    build:
+      context: ledger-tp/
+    container_name: blkchn/ledger-tp
+    depends_on:
+      - validator
+    # volumes:
+    #   - type: bind
+    #     source: ./ledger-tp/
+    #     target: /project
+
+
   validator:
     image: hyperledger/sawtooth-validator:chime
-    container_name: sawtooth-validator-default
+    container_name: blkchn/validator
     expose:
       - 4004
     # start the validator with an empty genesis batch
@@ -56,7 +68,7 @@ services:
 
   devmode-engine:
     image: hyperledger/sawtooth-devmode-engine-rust:chime
-    container_name: sawtooth-devmode-engine-rust-default
+    container_name: blkchn/devmode-engine-rust-default
     depends_on:
       - validator
     entrypoint: devmode-engine-rust -C tcp://validator:5050
@@ -65,7 +77,7 @@ services:
 
   rest-api:
     image: hyperledger/sawtooth-rest-api:chime
-    container_name: sawtooth-rest-api-default
+    container_name: blkchn/rest-api-default
     expose:
       - 8008
     depends_on:
