@@ -3,34 +3,47 @@ option go_package = "ledger_pb2";
 
 
 enum Currency {
+    // euro
     CURRENCY_EUR = 0;
-    // złoty
+    // zloty
     CURRENCY_PLN = 1;
     // peso chileno
     CURRENCY_CLP = 2;
 }
 
+// Unambiguous indication of an account
 message AccountIndication {
+    // account ID
     string account_id = 1;
+    // wallet ID
     string wallet_id = 2;
 }
 
+// Message payloads used by this transaction family
 message LedgerTransactionPayload {
     message CreateWalletPayload {
+        // Unique wallet ID
         string id = 1;
+        // Wallet name
         string name = 2;
     }
 
     message CreateAccountPayload {
+        // Unique account ID
         string id = 1;
+        // Wallet ID this account belongs to
         string wallet_id = 2;
+        // Account currency
         Currency currency = 3;
     }
-    
+
     message TransferPayload {
+        // Account from which the money is subtracted
         AccountIndication From = 1;
+        // Account to which the money is added
         AccountIndication To = 2;
 
+        // Amount to be transferred, given in the smallest unit of a currency
         uint64 value = 3;
     }
 }
