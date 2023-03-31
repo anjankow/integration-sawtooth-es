@@ -1,7 +1,9 @@
 [package]
 name = "ledger-tp"
 version = "0.1.0"
-edition = "2021"
+authors = ["anjankow"]
+# build script executed just before building the package
+build = "build.rs"
 
 [lib]
 name = "simple_ledger"

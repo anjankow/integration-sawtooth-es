@@ -25,7 +25,9 @@
 	"customizations": {
 		"vscode": {
 			"extensions": [
-				"zxh404.vscode-proto3"
+				"rust-lang.rust-analyzer",
+				"zxh404.vscode-proto3",
+				"tamasfe.even-better-toml"
 			]
 		}
 	},
@@ -39,10 +41,10 @@
 	// "runServices": [],
 
 	// Uncomment the next line if you want to keep your containers running after VS Code shuts down.
-	"shutdownAction": "stopCompose"
+	"shutdownAction": "stopCompose",
 
 	// Uncomment the next line to run commands after the container is created.
-	// "postCreateCommand": "cat /etc/os-release",
+	"postCreateCommand": "rustup component add rustfmt"
 
 	// Configure tool-specific properties.
 	// "customizations": {},
