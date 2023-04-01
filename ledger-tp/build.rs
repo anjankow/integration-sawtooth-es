@@ -15,7 +15,7 @@
  * ------------------------------------------------------------------------------
  */
 
-/// from https://github.com/hyperledger/sawtooth-core/blob/7651cb5552800dbac98559b46339a84eae472ef7/families/smallbank/smallbank_rust/build.rs
+/// from https://github.com/hyperledger/sawtooth-core/blob/v1.2.6/families/smallbank/smallbank_rust/build.rs
 extern crate glob;
 extern crate protoc_rust;
 

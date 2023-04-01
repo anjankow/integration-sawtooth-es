@@ -2,7 +2,7 @@
 FROM rust:1.67 as base
 
 ###
-### from https://github.com/hyperledger/sawtooth-core/blob/7651cb5552800dbac98559b46339a84eae472ef7/families/smallbank/smallbank_rust/Dockerfile
+### from https://github.com/hyperledger/sawtooth-core/blob/v1.2.6/families/smallbank/smallbank_rust/Dockerfile
 ###
 RUN apt-get update \
  && apt-get install -y \
@@ -21,7 +21,7 @@ RUN curl -OLsS https://github.com/google/protobuf/releases/download/v3.5.1/proto
 ENV PATH=$PATH:/protoc3/bin \
     CARGO_INCREMENTAL=0
 ###
-### end from https://github.com/hyperledger/sawtooth-core/blob/7651cb5552800dbac98559b46339a84eae472ef7/families/smallbank/smallbank_rust/Dockerfile
+### end from https://github.com/hyperledger/sawtooth-core/blob/v1.2.6/families/smallbank/smallbank_rust/Dockerfile
 ###
 
 ### -> stage dev to work within a vscode container

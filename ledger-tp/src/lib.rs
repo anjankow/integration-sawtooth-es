@@ -15,14 +15,14 @@
  * ------------------------------------------------------------------------------
  */
 
-// https://github.com/hyperledger/sawtooth-core/blob/7651cb5552800dbac98559b46339a84eae472ef7/families/smallbank/smallbank_rust/src/lib.rs
+// https://github.com/hyperledger/sawtooth-core/blob/v1.2.6/families/smallbank/smallbank_rust/src/lib.rs
 
- extern crate crypto;
+extern crate crypto;
 //  #[macro_use]
- extern crate log;
- extern crate protobuf;
- extern crate rustc_serialize;
- extern crate sawtooth_sdk;
- 
+extern crate log;
+extern crate protobuf;
+extern crate rustc_serialize;
+extern crate sawtooth_sdk;
+
 //  pub mod handler;
 //  mod protos;
