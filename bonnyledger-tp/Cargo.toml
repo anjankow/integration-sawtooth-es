@@ -1,5 +1,5 @@
 [package]
-name = "ledger-tp"
+name = "bonnyledger-tp"
 version = "0.1.0"
 authors = ["anjankow"]
 # build script executed just before building the package

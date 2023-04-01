@@ -30,11 +30,11 @@ services:
     logging:
       driver: none
 
-  ledger-tp:
+  bonnyledger-tp:
     build:
-      context: ledger-tp/
+      context: bonnyledger-tp/
     #   target: dev
-    container_name: ledger-tp
+    container_name: bonnyledger-tp
     depends_on:
       - validator
 
