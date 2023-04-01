@@ -11,39 +11,53 @@ enum Currency {
     CURRENCY_CLP = 2;
 }
 
-// Unambiguous indication of an account
-message AccountIndication {
-    // account ID
-    string account_id = 1;
-    // wallet ID
-    string wallet_id = 2;
+enum PayloadType {
+    PAYLOAD_TYPE_UNSET = 0;
+    CREATE_USER = 1;
+    CREATE_WALLET = 2;
+    LINK_WALLET = 3;
+    CREATE_ACCOUNT = 4;
+    MAKE_TRANSFER = 5;
 }
+
 
 // Message payloads used by this transaction family
 message LedgerTransactionPayload {
+
+    // User's keys need to be used to sign this transaction.
+    message CreateUserPayload {
+        string username = 1;
+    }
+
+    // When wallet is created, if there is an existing user with the key
+    // matching the signer of this transaction, wallet is linked.
     message CreateWalletPayload {
-        // Unique wallet ID
-        string id = 1;
         // Wallet name
-        string name = 2;
+        string name = 1;
+        // The key used by this wallet can be different from user's keys.
+        string pub_key = 2;
     }
 
+    // Can link only if the signer key matches an existing wallet.
+    message LinkWalletPayload {
+
+    }
+
+    // Account exists within the wallet only.
+    // To create an account, the wallet's key needs to be used for signing.
     message CreateAccountPayload {
-        // Unique account ID
-        string id = 1;
-        // Wallet ID this account belongs to
-        string wallet_id = 2;
         // Account currency
-        Currency currency = 3;
+        Currency currency = 1;
     }
 
-    message TransferPayload {
-        // Account from which the money is subtracted
-        AccountIndication From = 1;
-        // Account to which the money is added
-        AccountIndication To = 2;
-
+    // Transfers money from signer to receiver.
+    // To transfer, receiver needs to have an account in the given currency.
+    message MakeTransferPayload {
+        // Wallet address (public key) to which money is transferred.
+        string receiver_address = 1;
         // Amount to be transferred, given in the smallest unit of a currency
-        uint64 value = 3;
+        uint64 value = 2;
+        // Currency
+        Currency currency = 3;
     }
 }
