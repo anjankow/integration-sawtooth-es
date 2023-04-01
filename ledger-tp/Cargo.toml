@@ -6,7 +6,7 @@ authors = ["anjankow"]
 build = "build.rs"
 
 [lib]
-name = "simple_ledger"
+name = "bonny_ledger"
 path = "src/lib.rs"
 
 [[bin]]

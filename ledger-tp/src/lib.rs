@@ -24,5 +24,5 @@ extern crate protobuf;
 extern crate rustc_serialize;
 extern crate sawtooth_sdk;
 
-//  pub mod handler;
+pub mod handler;
 //  mod protos;
