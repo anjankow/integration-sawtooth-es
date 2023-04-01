@@ -38,9 +38,9 @@ use bonny_ledger::handler::BonnyLedgerTransactionHandler;
 use sawtooth_sdk::processor::TransactionProcessor;
 
 fn main() {
-    let matches = clap_app!(smallbank =>
+    let matches = clap_app!(bonny_ledger =>
          (version: crate_version!())
-         (about: "Smallbank Transaction Processor (Rust)")
+         (about: "Bonny-Ledger Transaction Processor")
          (@arg connect: -C --connect +takes_value
           "connection endpoint for validator")
          (@arg verbose: -v --verbose +multiple

@@ -105,4 +105,4 @@ RUN cargo install --bins \
     # into directory .
      --root .
 
-CMD ["app"]
+CMD ["app", "--connect", "tcp://validator:4004", "-vv"]
