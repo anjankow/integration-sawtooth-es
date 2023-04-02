@@ -28,8 +28,6 @@ extern crate protobuf;
 extern crate rustc_serialize;
 extern crate sawtooth_sdk;
 
-use crate::bonny_ledger::handlers;
-
 use bonny_ledger::handlers::handlers::BonnyLedgerTransactionHandler;
 use log::LevelFilter;
 use log4rs::append::console::ConsoleAppender;
