@@ -17,6 +17,8 @@
 
 // from https://github.com/hyperledger/sawtooth-core/blob/v1.2.6/families/smallbank/smallbank_rust/src/main.rs
 
+pub mod handler;
+
 #[macro_use]
 extern crate clap;
 extern crate crypto;

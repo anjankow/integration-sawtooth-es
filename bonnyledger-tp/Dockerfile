@@ -60,7 +60,7 @@ ENV LANG en_US.UTF-8
 
 # linux permissions / vscode support: Add user to avoid linux file permission issues
 # Detail: Inside the container, any mounted files/folders will have the exact same permissions
-# as outside the container - including the owner user ID (UID) and group ID (GID). 
+# as outside the container - including the owner user ID (UID) and group ID (GID).
 # Because of this, your container user will either need to have the same UID or be in a group with the same GID.
 # The actual name of the user / group does not matter. The first user on a machine typically gets a UID of 1000,
 # so most containers use this as the ID of the user to try to avoid this problem.
@@ -86,6 +86,8 @@ RUN mkdir -p /home/$USERNAME/.vscode-server/extensions \
 ###
 ### end from https://github.com/allaboutapps/go-starter/blob/go-starter-2023-03-03/Dockerfile
 ###
+
+RUN cargo install cargo-modules
 
 WORKDIR /project
 

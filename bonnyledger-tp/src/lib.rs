@@ -18,11 +18,12 @@
 // https://github.com/hyperledger/sawtooth-core/blob/v1.2.6/families/smallbank/smallbank_rust/src/lib.rs
 
 extern crate crypto;
-//  #[macro_use]
+#[macro_use] // to use log macros
 extern crate log;
 extern crate protobuf;
 extern crate rustc_serialize;
 extern crate sawtooth_sdk;
 
+mod address;
 pub mod handler;
-//  mod protos;
+pub mod protos;

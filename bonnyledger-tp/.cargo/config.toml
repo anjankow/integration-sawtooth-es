@@ -3,4 +3,4 @@ r = "run -- --connect tcp://validator:4004 -vv"
 
 [term]
 quiet = false          # whether cargo output is quiet
-verbose = true         # whether cargo provides verbose output
+verbose = false        # whether cargo provides verbose output

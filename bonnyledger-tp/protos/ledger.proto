@@ -11,18 +11,17 @@ enum Currency {
     CURRENCY_CLP = 2;
 }
 
-enum PayloadType {
-    PAYLOAD_TYPE_UNSET = 0;
-    CREATE_USER = 1;
-    CREATE_WALLET = 2;
-    LINK_WALLET = 3;
-    CREATE_ACCOUNT = 4;
-    MAKE_TRANSFER = 5;
-}
-
 
 // Message payloads used by this transaction family
 message LedgerTransactionPayload {
+
+    enum PayloadType {
+        PAYLOAD_TYPE_UNSET = 0;
+        CREATE_USER = 1;
+        CREATE_WALLET = 2;
+        CREATE_ACCOUNT = 3;
+        MAKE_TRANSFER = 4;
+    }
 
     // User's keys need to be used to sign this transaction.
     message CreateUserPayload {
@@ -60,4 +59,18 @@ message LedgerTransactionPayload {
         // Currency
         Currency currency = 3;
     }
+
+    PayloadType payload_type = 1;
+    CreateUserPayload create_user = 2;
+    CreateWalletPayload create_wallet = 3;
+    LinkWalletPayload link_wallet = 4;
+    CreateAccountPayload create_account = 5;
+    MakeTransferPayload make_transfer = 6;
+
+}
+
+
+// User data stored on the blockchain
+message User {
+    string username = 1;
 }

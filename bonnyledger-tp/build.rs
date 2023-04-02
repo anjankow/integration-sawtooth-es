@@ -32,6 +32,7 @@ fn main() {
     println!("cargo:rerun-if-changed=protos/");
     println!("cargo:rerun-if-changed=src/protos/");
 
+    println!("Generating proto files...");
     // let out_dir = env::var("OUT_DIR").unwrap();
     let out_dir = "./src"; // output in src/protos directory
     let dest_path = Path::new(&out_dir).join("protos");
