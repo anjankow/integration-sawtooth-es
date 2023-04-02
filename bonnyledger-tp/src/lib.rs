@@ -25,5 +25,5 @@ extern crate rustc_serialize;
 extern crate sawtooth_sdk;
 
 mod address;
-pub mod handler;
-pub mod protos;
+pub mod handlers;
+mod protos;

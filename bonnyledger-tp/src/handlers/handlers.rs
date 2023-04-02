@@ -1,7 +1,5 @@
 // based on https://github.com/hyperledger/sawtooth-core/blob/v1.2.6/families/smallbank/smallbank_rust/src/handler.rs
 
-use std::default;
-
 use sawtooth_sdk::messages::processor::TpProcessRequest;
 use sawtooth_sdk::processor::handler::ApplyError;
 use sawtooth_sdk::processor::handler::TransactionContext;
@@ -10,8 +8,9 @@ use sawtooth_sdk::processor::handler::TransactionHandler;
 use protos::ledger::LedgerTransactionPayload;
 use protos::ledger::LedgerTransactionPayload_PayloadType;
 
-use crate::address::family;
-mod create_user_handler;
+use address::family;
+
+use crate::handlers::create_user_handler;
 
 pub struct BonnyLedgerTransactionHandler {
     family_name: String,

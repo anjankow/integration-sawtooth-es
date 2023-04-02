@@ -17,8 +17,6 @@
 
 // from https://github.com/hyperledger/sawtooth-core/blob/v1.2.6/families/smallbank/smallbank_rust/src/main.rs
 
-pub mod handler;
-
 #[macro_use]
 extern crate clap;
 extern crate crypto;
@@ -30,14 +28,14 @@ extern crate protobuf;
 extern crate rustc_serialize;
 extern crate sawtooth_sdk;
 
+use crate::bonny_ledger::handlers;
+
+use bonny_ledger::handlers::handlers::BonnyLedgerTransactionHandler;
 use log::LevelFilter;
 use log4rs::append::console::ConsoleAppender;
 use log4rs::config::{Appender, Config, Root};
 use log4rs::encode::pattern::PatternEncoder;
 use std::process;
-
-use bonny_ledger::handler::BonnyLedgerTransactionHandler;
-use sawtooth_sdk::processor::TransactionProcessor;
 
 fn main() {
     let matches = clap_app!(bonny_ledger =>
