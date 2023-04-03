@@ -24,6 +24,8 @@ extern crate protobuf;
 extern crate rustc_serialize;
 extern crate sawtooth_sdk;
 
-mod address;
+pub mod address;
 pub mod handlers;
-mod protos;
+pub mod protos;
+
+pub const FAMILY_NAME: &str = address::family::FAMILY_NAME;
