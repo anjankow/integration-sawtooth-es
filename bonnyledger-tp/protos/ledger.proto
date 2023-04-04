@@ -37,11 +37,6 @@ message LedgerTransactionPayload {
         string pub_key = 2;
     }
 
-    // Can link only if the signer key matches an existing wallet.
-    message LinkWalletPayload {
-
-    }
-
     // Account exists within the wallet only.
     // To create an account, the wallet's key needs to be used for signing.
     message CreateAccountPayload {
@@ -73,4 +68,17 @@ message LedgerTransactionPayload {
 // User data stored on the blockchain
 message User {
     string username = 1;
+}
+
+// Wallet data stored on the blockchain
+message Wallet {
+    string name = 1;
+    string user_id = 2;
+}
+
+// Account data stored on the blockchain
+message Account {
+    Currency currency = 1;
+    // Value given in the smallest currency unit
+    uint64 value = 2;
 }
