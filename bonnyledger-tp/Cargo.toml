@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["anjankow"]
 # build script executed just before building the package
 build = "build.rs"
+edition = "2021"
 
 [lib]
 name = "bonny_ledger"
@@ -21,7 +22,6 @@ clap = "2"
 protobuf = "2.23"
 log = "0.4"
 log4rs = "0.8"
-reqwest = "0.11.16"
 error-chain = "0.12.4"
 futures = "0.3"
 url = "2.3.1"
@@ -29,6 +29,9 @@ ecdsa = "0.16.2"
 k256 = "0.13.0"
 rand = "0.8.4"
 sawtooth = "0.7.3"
+reqwest = { version = "0.11"}
+tokio = { version = "1.14.0", features = ["rt", "macros"] }
+
 
 [build-dependencies]
 protoc-rust = "2.0"

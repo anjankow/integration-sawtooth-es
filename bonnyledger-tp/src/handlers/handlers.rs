@@ -5,12 +5,10 @@ use sawtooth_sdk::processor::handler::ApplyError;
 use sawtooth_sdk::processor::handler::TransactionContext;
 use sawtooth_sdk::processor::handler::TransactionHandler;
 
-use protos::ledger::LedgerTransactionPayload;
-use protos::ledger::LedgerTransactionPayload_PayloadType;
-
-use address::family;
+use crate::address::family;
 
 use crate::handlers::create_user_handler;
+use crate::protos::ledger::{LedgerTransactionPayload, LedgerTransactionPayload_PayloadType};
 
 pub struct BonnyLedgerTransactionHandler {
     family_name: String,

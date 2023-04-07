@@ -16,9 +16,11 @@ mod tests {
     use bonny_ledger::address::users;
     use crypto::digest::Digest;
     use crypto::sha2::Sha512;
+    use futures::executor::block_on;
     use protobuf::{Message, RepeatedField};
     use rand::distributions::{Alphanumeric, DistString};
     use reqwest::header::{CONTENT_TYPE, X_CONTENT_TYPE_OPTIONS};
+    use reqwest::{Client, Method};
     use sawtooth::protos::transaction;
     use sawtooth::protos::{
         batch::Batch, batch::BatchHeader, batch::BatchList, transaction::Transaction,
@@ -26,7 +28,7 @@ mod tests {
     };
     use sawtooth_sdk::signing;
 
-    const VALIDATOR_URL: &str = "tcp://validator:4004";
+    const REST_API_URL: &str = "http://rest-api:8008";
     const FAMILY_VERSION: &str = "0.1.0";
 
     // based on https://github.com/hyperledger/sawtooth-core/blob/v1.2.6/cli/sawtooth_cli/admin_command/keygen.py#L94
@@ -139,24 +141,40 @@ mod tests {
         };
 
         let mut batch_list_vec: Vec<u8> = vec![];
-        batch_list.write_to_vec(&mut batch_list_vec);
+        batch_list
+            .write_to_vec(&mut batch_list_vec)
+            .expect("Failed to write batch list to vector");
 
-        let path = reqwest::Url::parse(VALIDATOR_URL);
-        let url = path.expect("Invalid path").join("/batches").unwrap();
+        let path = reqwest::Url::parse(REST_API_URL)
+            .expect("Invalid path")
+            .join("/batches")
+            .unwrap();
 
         let client = reqwest::Client::new();
-        let res = client
-            .post(url)
-            .header("Content-Type", "application/octet-stream")
-            .body(batch_list_vec)
-            .send();
+        let res = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let res = client
+                    .request(Method::POST, path)
+                    .header("Content-Type", "application/octet-stream")
+                    .body(batch_list_vec)
+                    .send()
+                    .await
+                    .expect("Failed to send request");
+                res
+            });
 
-        //     let mut res = reqwest::blocking::("http://httpbin.org/get")?;
-        //     let mut body = String::new();
-        //     res.read_to_string(&mut body)?;
+        if !res.status().is_success() {
+            println!("Received API error: {:?}", res);
+            return;
+        }
 
-        //     println!("Status: {}", res.status());
-        //     println!("Headers:\n{:#?}", res.headers());
-        //     println!("Body:\n{}", body);
+        println!("Success!");
+        // let body = res.bytes().await.expect("Failed to get response body");
+        //  = block_on(res.bytes().await.expect("Failed to get body"));
+        // let sdk_resp = sawtooth_sdk::messages::client_batch_submit::ClientBatchStatusResponse::parse_from_bytes(Vec::<u8>::from().as_slice()).expect("Failed to parse response");
+        // println!(sdk_resp.status);
     }
 }

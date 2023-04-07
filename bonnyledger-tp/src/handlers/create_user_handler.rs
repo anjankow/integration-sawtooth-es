@@ -3,8 +3,8 @@ use sawtooth_sdk::messages::processor::TpProcessRequest;
 use sawtooth_sdk::processor::handler::ApplyError;
 use sawtooth_sdk::processor::handler::TransactionContext;
 
-use address::users::get_user_address;
-use protos::ledger;
+use crate::address::users::get_user_address;
+use crate::protos::ledger;
 
 pub fn apply_create_user(
     context: &mut dyn TransactionContext,
