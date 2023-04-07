@@ -7,16 +7,21 @@ extern crate rand;
 extern crate reqwest;
 extern crate sawtooth;
 extern crate sawtooth_sdk;
+extern crate serde;
+extern crate serde_json;
 extern crate url;
+
+use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 mod tests {
+
     use bonny_ledger::protos;
     // use crypto::ed25519::signature;
     use bonny_ledger::address::users;
     use crypto::digest::Digest;
     use crypto::sha2::Sha512;
-    use futures::executor::block_on;
+    use log4rs::encode::json;
     use protobuf::{Message, RepeatedField};
     use rand::distributions::{Alphanumeric, DistString};
     use reqwest::header::{CONTENT_TYPE, X_CONTENT_TYPE_OPTIONS};
@@ -26,7 +31,11 @@ mod tests {
         batch::Batch, batch::BatchHeader, batch::BatchList, transaction::Transaction,
         transaction::TransactionHeader,
     };
+    use sawtooth_sdk::messages::client_batch_submit::ClientBatchStatusResponse;
     use sawtooth_sdk::signing;
+    use serde_json::de;
+
+    use crate::PostBatchResponse;
 
     const REST_API_URL: &str = "http://rest-api:8008";
     const FAMILY_VERSION: &str = "0.1.0";
@@ -151,20 +160,21 @@ mod tests {
             .unwrap();
 
         let client = reqwest::Client::new();
-        let res = tokio::runtime::Builder::new_current_thread()
+        let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .unwrap()
-            .block_on(async {
-                let res = client
-                    .request(Method::POST, path)
-                    .header("Content-Type", "application/octet-stream")
-                    .body(batch_list_vec)
-                    .send()
-                    .await
-                    .expect("Failed to send request");
-                res
-            });
+            .unwrap();
+
+        let res = rt.block_on(async {
+            let res = client
+                .request(Method::POST, path)
+                .header("Content-Type", "application/octet-stream")
+                .body(batch_list_vec)
+                .send()
+                .await
+                .expect("Failed to send request");
+            res
+        });
 
         if !res.status().is_success() {
             println!("Received API error: {:?}", res);
@@ -172,9 +182,18 @@ mod tests {
         }
 
         println!("Success!");
-        // let body = res.bytes().await.expect("Failed to get response body");
-        //  = block_on(res.bytes().await.expect("Failed to get body"));
-        // let sdk_resp = sawtooth_sdk::messages::client_batch_submit::ClientBatchStatusResponse::parse_from_bytes(Vec::<u8>::from().as_slice()).expect("Failed to parse response");
-        // println!(sdk_resp.status);
+
+        let body = rt.block_on(async { res.bytes().await.expect("Failed to get response body") });
+        println!("{:?}", body);
+        // let decoded = PostBatchResponse {};
+        let decoded: PostBatchResponse =
+            serde_json::from_slice(&body).expect("Failed to parse body");
+
+        println!("{}", decoded.link);
     }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct PostBatchResponse {
+    pub link: String,
 }
