@@ -58,9 +58,8 @@ message LedgerTransactionPayload {
     PayloadType payload_type = 1;
     CreateUserPayload create_user = 2;
     CreateWalletPayload create_wallet = 3;
-    LinkWalletPayload link_wallet = 4;
-    CreateAccountPayload create_account = 5;
-    MakeTransferPayload make_transfer = 6;
+    CreateAccountPayload create_account = 4;
+    MakeTransferPayload make_transfer = 5;
 
 }
 
