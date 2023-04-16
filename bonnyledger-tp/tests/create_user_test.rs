@@ -1,4 +1,5 @@
 extern crate bonny_ledger;
+extern crate bytes;
 extern crate crypto;
 extern crate ecdsa;
 extern crate error_chain;
@@ -21,19 +22,13 @@ mod tests {
     use bonny_ledger::address::users;
     use crypto::digest::Digest;
     use crypto::sha2::Sha512;
-    use log4rs::encode::json;
     use protobuf::{Message, RepeatedField};
     use rand::distributions::{Alphanumeric, DistString};
-    use reqwest::header::{CONTENT_TYPE, X_CONTENT_TYPE_OPTIONS};
-    use reqwest::{Client, Method};
-    use sawtooth::protos::transaction;
+    use reqwest::{Client, Method, StatusCode};
     use sawtooth::protos::{
         batch::Batch, batch::BatchHeader, batch::BatchList, transaction::Transaction,
         transaction::TransactionHeader,
     };
-    use sawtooth_sdk::messages::client_batch_submit::ClientBatchStatusResponse;
-    use sawtooth_sdk::signing;
-    use serde_json::de;
 
     use crate::PostBatchResponse;
 
@@ -41,7 +36,10 @@ mod tests {
     const FAMILY_VERSION: &str = "0.1.0";
 
     // based on https://github.com/hyperledger/sawtooth-core/blob/v1.2.6/cli/sawtooth_cli/admin_command/keygen.py#L94
-    fn create_key_pair() -> (Box<dyn signing::PublicKey>, Box<dyn signing::PrivateKey>) {
+    fn create_key_pair() -> (
+        Box<dyn sawtooth_sdk::signing::PublicKey>,
+        Box<dyn sawtooth_sdk::signing::PrivateKey>,
+    ) {
         let context = sawtooth_sdk::signing::create_context("secp256k1")
             .expect("Failed to create signing context");
         let private_key = context
@@ -53,47 +51,42 @@ mod tests {
         (public_key, private_key)
     }
 
-    #[test]
-    fn create_user() {
-        let (public_key, private_key) = create_key_pair();
-
-        let sign_context = signing::secp256k1::Secp256k1Context::new();
-        let crypto_factory = signing::CryptoFactory::new(&sign_context);
-        let signer = crypto_factory.new_signer(private_key.as_ref());
-
-        // prepare payload
-        let username = "test_user";
-        let payload = protos::ledger::LedgerTransactionPayload_CreateUserPayload {
-            username: username.to_string(),
-            ..Default::default()
-        };
+    fn make_transaction_header(
+        signer: &sawtooth_sdk::signing::Signer,
+        transaction_payload: &Vec<u8>,
+        inputs: RepeatedField<String>,
+        outputs: RepeatedField<String>,
+    ) -> TransactionHeader {
         let mut sha = Sha512::new();
-        let mut payload_vec: Vec<u8> = vec![];
-        payload
-            .write_to_vec(&mut payload_vec)
-            .expect("Failed to serialize payload");
-        sha.input(&payload_vec);
+        sha.input(&transaction_payload);
         let payload_sha512 = sha.result_str().to_string();
 
-        let mut user_address = RepeatedField::new();
-        user_address.push(users::get_user_address(public_key.as_hex().as_str()));
+        let signer_pub_key = signer
+            .get_public_key()
+            .expect("Failed to get signer public key");
 
         let transaction_header = TransactionHeader {
-            batcher_public_key: public_key.as_hex(),
-            signer_public_key: public_key.as_hex(),
+            batcher_public_key: signer_pub_key.as_hex(),
+            signer_public_key: signer_pub_key.as_hex(),
 
             family_name: bonny_ledger::FAMILY_NAME.to_string(),
             family_version: FAMILY_VERSION.to_string(),
 
-            payload_sha512: payload_sha512,
-
-            inputs: user_address.clone(),
-            outputs: user_address.clone(),
+            payload_sha512,
+            inputs,
+            outputs,
 
             nonce: Alphanumeric.sample_string(&mut rand::thread_rng(), 10),
             ..Default::default()
         };
+        transaction_header
+    }
 
+    fn make_batch(
+        signer: &sawtooth_sdk::signing::Signer,
+        transaction_payload: &Vec<u8>,
+        transaction_header: &TransactionHeader,
+    ) -> sawtooth::protos::batch::Batch {
         // Signature of TransactionHeader
         let mut transaction_header_vec: Vec<u8> = vec![];
         transaction_header
@@ -105,7 +98,7 @@ mod tests {
 
         let transaction = Transaction {
             header: transaction_header_vec,
-            payload: payload_vec,
+            payload: transaction_payload.clone(),
             header_signature: transaction_header_signature.clone(),
 
             ..Default::default()
@@ -114,8 +107,12 @@ mod tests {
         let mut transaction_ids = RepeatedField::new();
         transaction_ids.push(transaction_header_signature);
 
+        // Batch header
         let batch_header = BatchHeader {
-            signer_public_key: public_key.as_hex(),
+            signer_public_key: signer
+                .get_public_key()
+                .expect("Failed to get signer public key")
+                .as_hex(),
             transaction_ids,
 
             ..Default::default()
@@ -133,6 +130,7 @@ mod tests {
         let mut transactions = RepeatedField::new();
         transactions.push(transaction);
 
+        // Batch
         let batch = Batch {
             header: batch_header_vec,
             header_signature: batch_header_signature,
@@ -141,8 +139,12 @@ mod tests {
             ..Default::default()
         };
 
+        batch
+    }
+
+    fn make_post_batches_payload(batch: &sawtooth::protos::batch::Batch) -> Vec<u8> {
         let mut batches = RepeatedField::<Batch>::new();
-        batches.push(batch);
+        batches.push(batch.clone());
 
         let batch_list = BatchList {
             batches,
@@ -154,6 +156,10 @@ mod tests {
             .write_to_vec(&mut batch_list_vec)
             .expect("Failed to write batch list to vector");
 
+        batch_list_vec
+    }
+
+    fn post_batches(request_body: Vec<u8>) -> Result<PostBatchResponse, reqwest::Error> {
         let path = reqwest::Url::parse(REST_API_URL)
             .expect("Invalid path")
             .join("/batches")
@@ -169,27 +175,99 @@ mod tests {
             let res = client
                 .request(Method::POST, path)
                 .header("Content-Type", "application/octet-stream")
-                .body(batch_list_vec)
+                .body(request_body)
                 .send()
                 .await
                 .expect("Failed to send request");
             res
         });
 
-        if !res.status().is_success() {
-            println!("Received API error: {:?}", res);
-            return;
+        match res.error_for_status() {
+            Err(err) => {
+                return Err(err);
+            }
+            Ok(res) => {
+                let resp_bytes = rt.block_on(async { res.bytes().await });
+
+                match resp_bytes {
+                    Err(err) => Err(err),
+                    Ok(resp_bytes) => {
+                        let decoded: PostBatchResponse =
+                            serde_json::from_slice(&resp_bytes).expect("Failed to parse body");
+                        Ok(decoded)
+                    }
+                }
+            }
         }
+    }
 
-        println!("Success!");
+    fn exec_transaction(
+        signer: &sawtooth_sdk::signing::Signer,
+        transaction_payload: &Vec<u8>,
+        transaction_header: &TransactionHeader,
+    ) -> Result<PostBatchResponse, reqwest::Error> {
+        let batch = make_batch(&signer, &transaction_payload, &transaction_header);
 
-        let body = rt.block_on(async { res.bytes().await.expect("Failed to get response body") });
-        println!("{:?}", body);
-        // let decoded = PostBatchResponse {};
-        let decoded: PostBatchResponse =
-            serde_json::from_slice(&body).expect("Failed to parse body");
+        let req_body = make_post_batches_payload(&batch);
+        let res = post_batches(req_body);
 
-        println!("{}", decoded.link);
+        let response = match res {
+            Err(err) => {
+                return Err(err);
+            }
+            Ok(_response) => _response,
+        };
+
+        println!("{}", response.link);
+        Ok(response)
+
+        // Wait until the batch is accepted/rejected
+        // enum Status {
+        //     COMMITTED,
+        //     INVALID,
+        //     PENDING,
+        //     UNKNOWN,
+        // }
+
+        // return Ok(response);
+        // // let status = Status::PENDING;
+        // // while status == Status::PENDING {
+
+        // // }
+    }
+
+    #[test]
+    fn create_user() {
+        let (public_key, private_key) = create_key_pair();
+
+        let sign_context = sawtooth_sdk::signing::secp256k1::Secp256k1Context::new();
+        let crypto_factory = sawtooth_sdk::signing::CryptoFactory::new(&sign_context);
+        let signer = crypto_factory.new_signer(private_key.as_ref());
+
+        // prepare payload
+        let username = "test_user";
+        let payload = protos::ledger::LedgerTransactionPayload_CreateUserPayload {
+            username: username.to_string(),
+            ..Default::default()
+        };
+
+        let mut payload_vec: Vec<u8> = vec![];
+        payload
+            .write_to_vec(&mut payload_vec)
+            .expect("Failed to serialize payload");
+
+        let mut user_address = RepeatedField::new();
+        user_address.push(users::get_user_address(public_key.as_hex().as_str()));
+
+        let transaction_header = make_transaction_header(
+            &signer,
+            &payload_vec,
+            user_address.clone(),
+            user_address.clone(),
+        );
+
+        let res = exec_transaction(&signer, &payload_vec, &transaction_header);
+        println!("FINISHED {:?}", res);
     }
 }
 
