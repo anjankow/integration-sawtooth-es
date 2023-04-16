@@ -8,6 +8,7 @@ use sawtooth_sdk::processor::handler::TransactionHandler;
 use crate::address::family;
 
 use crate::handlers::create_user_handler;
+use crate::protobuf::Message;
 use crate::protos::ledger::{LedgerTransactionPayload, LedgerTransactionPayload_PayloadType};
 
 pub struct BonnyLedgerTransactionHandler {
@@ -44,16 +45,21 @@ impl TransactionHandler for BonnyLedgerTransactionHandler {
         request: &TpProcessRequest,
         context: &mut dyn TransactionContext,
     ) -> Result<(), ApplyError> {
-        let mut payload = unpack_payload(request.get_payload())?;
+        let payload = request.get_payload();
+        let mut payload_unpacked = unpack_payload(payload).expect("Failed to unpack payload");
         debug!(
             "Ledger txn {}: type {:?}",
             request.get_signature(),
-            payload.get_payload_type()
+            payload_unpacked.get_payload_type()
         );
 
-        match payload.get_payload_type() {
+        match payload_unpacked.get_payload_type() {
             LedgerTransactionPayload_PayloadType::CREATE_USER => {
-                create_user_handler::apply_create_user(context, request, payload.take_create_user())
+                create_user_handler::apply_create_user(
+                    context,
+                    request,
+                    payload_unpacked.take_create_user(),
+                )
             }
 
             LedgerTransactionPayload_PayloadType::CREATE_WALLET => todo!(),
@@ -70,7 +76,8 @@ impl TransactionHandler for BonnyLedgerTransactionHandler {
 }
 
 fn unpack_payload(payload: &[u8]) -> Result<LedgerTransactionPayload, ApplyError> {
-    protobuf::parse_from_bytes(&payload).map_err(|err| {
+    println!("{:?}", payload);
+    LedgerTransactionPayload::parse_from_bytes(&payload).map_err(|err| {
         warn!("Failed to unmarshal TransactionPayload: {:?}", err);
         ApplyError::InvalidTransaction(format!("Failed to unmarshal TransactionPayload: {:?}", err))
     })

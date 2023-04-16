@@ -62,6 +62,7 @@ services:
           --bind consensus:tcp://eth0:5050 \
         \""
 
+
   devmode-engine:
     image: hyperledger/sawtooth-devmode-engine-rust:chime
     container_name: devmode-engine-rust-default
@@ -78,4 +79,11 @@ services:
       - 8008
     depends_on:
       - validator
-    entrypoint: sawtooth-rest-api --verbose -C tcp://validator:4004 --bind rest-api:8008
+    entrypoint: sawtooth-rest-api -vv -C tcp://validator:4004 --bind rest-api:8008
+
+  shell:
+    build:
+      context: sawtooth-shell/
+    container_name: sawtooth-shell
+    depends_on:
+      - validator

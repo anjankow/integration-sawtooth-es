@@ -17,7 +17,9 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 mod tests {
 
-    use bonny_ledger::protos;
+    use std::time::Duration;
+
+    use bonny_ledger::protos::{self, ledger::LedgerTransactionPayload_PayloadType};
     // use crypto::ed25519::signature;
     use bonny_ledger::address::users;
     use crypto::digest::Digest;
@@ -29,6 +31,7 @@ mod tests {
         batch::Batch, batch::BatchHeader, batch::BatchList, transaction::Transaction,
         transaction::TransactionHeader,
     };
+    use tokio::runtime::Runtime;
 
     use crate::PostBatchResponse;
 
@@ -73,9 +76,8 @@ mod tests {
             family_version: FAMILY_VERSION.to_string(),
 
             payload_sha512,
-            inputs,
-            outputs,
-
+            // inputs,
+            // outputs,
             nonce: Alphanumeric.sample_string(&mut rand::thread_rng(), 10),
             ..Default::default()
         };
@@ -165,17 +167,18 @@ mod tests {
             .join("/batches")
             .unwrap();
 
-        let client = reqwest::Client::new();
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
 
         let res = rt.block_on(async {
+            let client = reqwest::Client::new();
             let res = client
                 .request(Method::POST, path)
                 .header("Content-Type", "application/octet-stream")
                 .body(request_body)
+                .timeout(Duration::from_secs(5))
                 .send()
                 .await
                 .expect("Failed to send request");
@@ -246,10 +249,13 @@ mod tests {
 
         // prepare payload
         let username = "test_user";
-        let payload = protos::ledger::LedgerTransactionPayload_CreateUserPayload {
+        let create_user_payload = protos::ledger::LedgerTransactionPayload_CreateUserPayload {
             username: username.to_string(),
             ..Default::default()
         };
+        let mut payload = protos::ledger::LedgerTransactionPayload::new();
+        payload.set_create_user(create_user_payload);
+        payload.set_payload_type(LedgerTransactionPayload_PayloadType::CREATE_USER);
 
         let mut payload_vec: Vec<u8> = vec![];
         payload
