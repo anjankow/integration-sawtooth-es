@@ -15,9 +15,9 @@ pub fn get_user_address(user_key: &str) -> String {
 
     let mut sha = Sha512::new();
     sha.input_str(user_key);
-    let user_key = sha.result_str()[..53].to_string();
+    let user_key_hash = sha.result_str()[..58].to_string();
 
-    let address = family_prefix + &users_prefix + &user_key;
+    let address = family_prefix + &users_prefix + &user_key_hash;
     address
 }
 

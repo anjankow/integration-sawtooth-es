@@ -76,8 +76,8 @@ mod tests {
             family_version: FAMILY_VERSION.to_string(),
 
             payload_sha512,
-            // inputs,
-            // outputs,
+            inputs,
+            outputs,
             nonce: Alphanumeric.sample_string(&mut rand::thread_rng(), 10),
             ..Default::default()
         };
@@ -178,7 +178,7 @@ mod tests {
                 .request(Method::POST, path)
                 .header("Content-Type", "application/octet-stream")
                 .body(request_body)
-                .timeout(Duration::from_secs(5))
+                .timeout(Duration::from_secs(10))
                 .send()
                 .await
                 .expect("Failed to send request");
@@ -262,14 +262,15 @@ mod tests {
             .write_to_vec(&mut payload_vec)
             .expect("Failed to serialize payload");
 
-        let mut user_address = RepeatedField::new();
-        user_address.push(users::get_user_address(public_key.as_hex().as_str()));
+        let mut user_address_vec = RepeatedField::new();
+        let user_address = users::get_user_address(public_key.as_hex().as_str());
+        user_address_vec.push(user_address);
 
         let transaction_header = make_transaction_header(
             &signer,
             &payload_vec,
-            user_address.clone(),
-            user_address.clone(),
+            user_address_vec.clone(),
+            user_address_vec.clone(),
         );
 
         let res = exec_transaction(&signer, &payload_vec, &transaction_header);
