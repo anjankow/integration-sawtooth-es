@@ -18,17 +18,11 @@ extern crate url;
 #[cfg(test)]
 mod tests {
 
-    use futures::channel::oneshot;
-    use log::error;
-    use rstest::fixture;
-    use serde::__private::de;
     use serde::{Deserialize, Serialize};
-    use std::array;
     use std::time::Duration;
 
-    use bonny_ledger::protos::{self, ledger::LedgerTransactionPayload_PayloadType};
-    // use crypto::ed25519::signature;
     use bonny_ledger::address::users;
+    use bonny_ledger::protos::{self, ledger::LedgerTransactionPayload_PayloadType};
     use crypto::digest::Digest;
     use crypto::sha2::Sha512;
     use log::debug;
@@ -39,26 +33,9 @@ mod tests {
         batch::Batch, batch::BatchHeader, batch::BatchList, transaction::Transaction,
         transaction::TransactionHeader,
     };
-    use std::sync::Once;
 
     const REST_API_URL: &str = "http://rest-api:8008";
     const FAMILY_VERSION: &str = "0.1.0";
-
-    static TOKIO_RT: once_cell::sync::OnceCell<tokio::runtime::Runtime> =
-        once_cell::sync::OnceCell::new();
-
-    // #[rstest::fixture]
-    fn get_tokio_runtime<'a>() -> &'a tokio::runtime::Handle {
-        fn init_tokio() -> tokio::runtime::Runtime {
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap()
-        }
-
-        let rt = TOKIO_RT.get_or_init(init_tokio);
-        rt.handle()
-    }
 
     // based on https://github.com/hyperledger/sawtooth-core/blob/v1.2.6/cli/sawtooth_cli/admin_command/keygen.py#L94
     fn create_key_pair() -> (
@@ -183,38 +160,30 @@ mod tests {
         batch_list_vec
     }
 
-    fn post_batches(request_body: Vec<u8>) -> Result<PostBatchResponse, reqwest::Error> {
+    async fn post_batches(request_body: Vec<u8>) -> Result<PostBatchResponse, reqwest::Error> {
         let path = reqwest::Url::parse(REST_API_URL)
             .expect("Invalid path")
             .join("/batches")
             .unwrap();
 
-        // let rt = get_tokio_runtime();
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let res = rt.block_on(async {
-            let client = reqwest::Client::new();
-            println!("Sending POST /batches");
-            let res = client
-                .request(Method::POST, path)
-                .header("Content-Type", "application/octet-stream")
-                .body(request_body)
-                .timeout(Duration::from_secs(10))
-                .send()
-                .await
-                .expect("Failed to send request");
-            println!("Request sent.");
-            res
-        });
+        let client = reqwest::Client::new();
+        println!("Sending POST /batches");
+        let res = client
+            .request(Method::POST, path)
+            .header("Content-Type", "application/octet-stream")
+            .body(request_body)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+            .expect("Failed to send request");
+        println!("Request sent.");
 
         match res.error_for_status() {
             Err(err) => {
                 return Err(err);
             }
             Ok(res) => {
-                let resp_bytes = rt.block_on(async { res.bytes().await });
+                let resp_bytes = res.bytes().await;
 
                 match resp_bytes {
                     Err(err) => Err(err),
@@ -228,15 +197,15 @@ mod tests {
         }
     }
 
-    fn exec_transaction(
-        signer: &sawtooth_sdk::signing::Signer,
+    async fn exec_transaction(
+        signer: &sawtooth_sdk::signing::Signer<'_>,
         transaction_payload: &Vec<u8>,
         transaction_header: &TransactionHeader,
     ) -> Result<PostBatchResponse, Box<dyn std::error::Error>> {
         let batch = make_batch(&signer, &transaction_payload, &transaction_header);
 
         let req_body = make_post_batches_payload(&batch);
-        let res = post_batches(req_body);
+        let res = post_batches(req_body).await;
 
         let response = match res {
             Err(err) => {
@@ -257,7 +226,7 @@ mod tests {
 
         let mut status = Status::PENDING;
         for _ in 0..3 {
-            status = get_batch_status(&batch_status_link);
+            status = get_batch_status(&batch_status_link).await;
             if status == Status::PENDING {
                 break;
             }
@@ -272,22 +241,14 @@ mod tests {
         return Ok(response);
     }
 
-    fn get_batch_status(path: &str) -> Status {
-        // let rt = get_tokio_runtime();
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let res = rt.block_on(async {
-            let client = reqwest::Client::new();
-            let res = client
-                .request(Method::GET, path)
-                .timeout(Duration::from_secs(10))
-                .send()
-                .await
-                .expect("Failed to send request");
-            res
-        });
+    async fn get_batch_status(path: &str) -> Status {
+        let client = reqwest::Client::new();
+        let res = client
+            .request(Method::GET, path)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+            .expect("Failed to send request");
 
         match res.error_for_status() {
             Err(err) => {
@@ -295,7 +256,8 @@ mod tests {
                 return Status::UNKNOWN;
             }
             Ok(res) => {
-                let resp_bytes = rt.block_on(async { res.bytes().await });
+                // let resp_bytes = rt.block_on(async { res.bytes().await });
+                let resp_bytes = res.bytes().await;
 
                 match resp_bytes {
                     Err(err) => {
@@ -313,8 +275,12 @@ mod tests {
         }
     }
 
-    #[test]
-    fn create_user() {
+    // fn get_state<T>(address: String) -> T {
+    //     return T;
+    // }
+
+    #[tokio::test]
+    async fn create_user() {
         let (public_key, private_key) = create_key_pair();
 
         let sign_context = sawtooth_sdk::signing::secp256k1::Secp256k1Context::new();
@@ -347,8 +313,10 @@ mod tests {
             user_address_vec.clone(),
         );
 
-        let res = exec_transaction(&signer, &payload_vec, &transaction_header);
+        let res = exec_transaction(&signer, &payload_vec, &transaction_header).await;
         assert_eq!(res.is_err(), false);
+
+        // let state = get_state::<bonny_ledger::protos::ledger::User>(user_address);
     }
 
     #[derive(Serialize, Deserialize, Debug)]
