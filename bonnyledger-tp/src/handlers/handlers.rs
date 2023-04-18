@@ -76,7 +76,6 @@ impl TransactionHandler for BonnyLedgerTransactionHandler {
 }
 
 fn unpack_payload(payload: &[u8]) -> Result<LedgerTransactionPayload, ApplyError> {
-    println!("{:?}", payload);
     LedgerTransactionPayload::parse_from_bytes(&payload).map_err(|err| {
         warn!("Failed to unmarshal TransactionPayload: {:?}", err);
         ApplyError::InvalidTransaction(format!("Failed to unmarshal TransactionPayload: {:?}", err))
