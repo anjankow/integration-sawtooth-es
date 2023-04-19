@@ -39,12 +39,9 @@ pub fn apply_create_user(
     user.set_username(user_data.get_username().to_string());
 
     // prepare payload to store on the blockchain
-    let data = Message::write_to_bytes(&user).map_err(|err| {
-        warn!(
-            "Invalid transaction: Failed to serialize Account: {:?}",
-            err
-        );
-        ApplyError::InvalidTransaction(format!("Failed to serialize Account: {:?}", err))
+    let data = user.write_to_bytes().map_err(|err| {
+        warn!("Invalid transaction: Failed to serialize: {:?}", err);
+        ApplyError::InvalidTransaction(format!("Failed to serialize: {:?}", err))
     })?;
     // create new user on the blockchain
     context.set_state_entry(user_address, data).map_err(|err| {

@@ -19,8 +19,10 @@ extern crate url;
 mod tests {
 
     use serde::{Deserialize, Serialize};
+    use std::os::linux::raw;
     use std::time::Duration;
 
+    use base64::{engine::general_purpose, Engine as _};
     use bonny_ledger::address::users;
     use bonny_ledger::protos::{self, ledger::LedgerTransactionPayload_PayloadType};
     use crypto::digest::Digest;
@@ -275,9 +277,78 @@ mod tests {
         }
     }
 
-    // fn get_state<T>(address: String) -> T {
-    //     return T;
-    // }
+    async fn get_state<T: protobuf::Message>(address: String) -> T {
+        let mut path = reqwest::Url::parse(REST_API_URL)
+            .expect("Invalid path")
+            .join("/state")
+            .unwrap();
+        path.set_query(Some(&("address=".to_string() + &address)));
+
+        println!("Getting state: {}", path.as_str());
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .request(Method::GET, path)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+            .expect("Failed to send request");
+
+        let resp_bytes = resp.bytes().await.expect("Failed to get response");
+
+        let state_resp: StateResponse =
+            serde_json::from_slice(&resp_bytes).expect("Failed to parse body");
+
+        let raw_state = &state_resp
+            .data
+            .get(0)
+            .expect("Failed to get data from state response")
+            .data;
+        println!("State: |{}|", raw_state);
+
+        let state_decoded = general_purpose::STANDARD.decode(&raw_state).unwrap();
+
+        T::parse_from_bytes(&state_decoded).expect("Failed to parse status response")
+    }
+
+    #[test]
+    fn read_state_response() {
+        let username = "test_user";
+        let mut user = protos::ledger::User::new();
+        user.set_username(username.to_string());
+        let marshalled_from_user = user.write_to_bytes().unwrap();
+        let marshalled_from_message = Message::write_to_bytes(&user).unwrap();
+        assert_eq!(marshalled_from_message, marshalled_from_user);
+
+        let state_resp = r#"
+        {
+            "data": [
+              {
+                "address": "ddb0ea57ac2645245032ed2c51c8d6971388639afe2d36d0d9f4a74ab1134c4a839c06",
+                "data": "Cgl0ZXN0X3VzZXI="
+              }
+            ],
+            "head": "206306d8545d4081a488223f3f3563fe619f58d151efc0010ff2a35873eff2e74ea84ed11a119d1d51109951a54d62cb357672e357e27fd512b0179803fa5b70",
+            "link": "http://localhost:8008/state?head=206306d8545d4081a488223f3f3563fe619f58d151efc0010ff2a35873eff2e74ea84ed11a119d1d51109951a54d62cb357672e357e27fd512b0179803fa5b70&start=ddb0ea57ac2645245032ed2c51c8d6971388639afe2d36d0d9f4a74ab1134c4a839c06&limit=100&address=ddb0ea57ac2645245032ed2c51c8d6971388639afe2d36d0d9f4a74ab1134c4a839c06",
+            "paging": {
+              "limit": null,
+              "start": null
+            }
+        }
+        "#.as_bytes();
+        let decoded: StateResponse =
+            serde_json::from_slice(&state_resp).expect("Failed to parse body");
+
+        let raw_state = &decoded
+            .data
+            .get(0)
+            .expect("Failed to get data from state response")
+            .data;
+
+        let state_decoded = general_purpose::STANDARD.decode(&raw_state).unwrap();
+        let user = protos::ledger::User::parse_from_bytes(&state_decoded).unwrap();
+        assert_eq!(user.username, username);
+    }
 
     #[tokio::test]
     async fn create_user() {
@@ -304,7 +375,7 @@ mod tests {
 
         let mut user_address_vec = RepeatedField::new();
         let user_address = users::get_user_address(public_key.as_hex().as_str());
-        user_address_vec.push(user_address);
+        user_address_vec.push(user_address.clone());
 
         let transaction_header = make_transaction_header(
             &signer,
@@ -314,9 +385,12 @@ mod tests {
         );
 
         let res = exec_transaction(&signer, &payload_vec, &transaction_header).await;
-        assert_eq!(res.is_err(), false);
+        res.is_err()
+            .then(|| println!("Error when posting batch: {}", res.unwrap_err()));
 
-        // let state = get_state::<bonny_ledger::protos::ledger::User>(user_address);
+        let state: bonny_ledger::protos::ledger::User = get_state(user_address).await;
+
+        assert_eq!(state.get_username(), username.to_string());
     }
 
     #[derive(Serialize, Deserialize, Debug)]
@@ -334,6 +408,17 @@ mod tests {
     #[derive(Serialize, Deserialize, Debug)]
     struct BatchStatuses {
         pub data: Vec<BatchStatus>,
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    struct StateData {
+        pub address: String,
+        pub data: String,
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    struct StateResponse {
+        pub data: Vec<StateData>,
     }
 
     #[derive(Clone, Serialize, Deserialize, Debug, strum_macros::Display, PartialEq)]
