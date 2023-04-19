@@ -46,7 +46,7 @@
 	"shutdownAction": "stopCompose",
 
 	// Uncomment the next line to run commands after the container is created.
-	"postCreateCommand": "rustup component add rustfmt"
+	"postCreateCommand": "git config --global --add safe.directory /workspaces/blkchn && rustup component add rustfmt"
 
 	// Configure tool-specific properties.
 	// "customizations": {},
