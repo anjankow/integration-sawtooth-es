@@ -84,8 +84,11 @@ services:
     entrypoint: sawtooth-rest-api -vv -C tcp://validator:4004 --bind rest-api:8008
 
   shell:
-    build:
-      context: sawtooth-shell/
+    image: hyperledger/sawtooth-shell:chime
     container_name: sawtooth-shell
-    depends_on:
-      - validator
+    entrypoint: "bash -c \"\
+      sawtooth keygen && \
+      cp -a /etc/sawtooth/cli.toml.example /etc/sawtooth/cli.toml && \
+      sed -i 's/^\\(#\\)\\(.*\\)\\(localhost\\)/\\2rest-api/' /etc/sawtooth/cli.toml && \
+      tail -f /dev/null \
+      \""
