@@ -3,9 +3,9 @@ name = "es_mirror_blkchn"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-name = "es_mirror_blkchn"
-path = "src/lib.rs"
+# [lib]
+# name = "es_mirror_blkchn"
+# path = "src/lib.rs"
 
 
 [[bin]]

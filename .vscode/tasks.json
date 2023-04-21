@@ -8,7 +8,19 @@
 				"$rustc"
 			],
 			"group": "build",
-			"label": "rust: cargo build",
+			"label": "bonnyledger-tp: rust: cargo build",
+			"options": {
+				"cwd": "${workspaceFolder}/bonnyledger-tp"
+			}
+		},
+		{
+			"type": "cargo",
+			"command": "build",
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "es-mirror-blkchn: rust: cargo build",
 			"options": {
 				"cwd": "${workspaceFolder}/bonnyledger-tp"
 			}

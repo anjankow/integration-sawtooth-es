@@ -17,13 +17,16 @@ version: "3.4"
 
 services:
 
-  # es_mirror_blkchn:
-  #   build:
-  #     context: es_mirror_blkchn/
-  #   #   target: dev
-  #   container_name: bonnyledger-tp
-  #   depends_on:
-  #     - validator
+  es-mirror-blkchn:
+    build:
+      dockerfile: docker/Dockerfile.rust
+      context: .
+      args:
+        - SERVICE=es-mirror-blkchn
+      target: release
+    container_name: es-mirror-blkchn
+    depends_on:
+      - validator
 
 ################################################################
 ############              BLOCKCHAIN                ############

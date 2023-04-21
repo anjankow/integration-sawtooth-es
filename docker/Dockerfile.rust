@@ -92,7 +92,7 @@ RUN mkdir -p /home/$USERNAME/.vscode-server/extensions \
 ## install additional cargo tools
 RUN cargo install cargo-modules
 
-WORKDIR /project
+WORKDIR /workspaces
 
 ### -> stage release to build container running the app
 FROM base as release

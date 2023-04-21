@@ -8,7 +8,7 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "App",
+            "name": "bonnyledger-tp",
             "preLaunchTask": "rust: cargo build",
             "program": "${workspaceFolder}/bonnyledger-tp/target/debug/app",
             "args": ["--connect", "tcp://validator:4004", "-vv"],
