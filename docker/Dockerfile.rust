@@ -1,3 +1,5 @@
+# Dockerfile for rust applications
+
 ### -> stage build to dowload app dependencies
 FROM rust:1.67 as base
 
@@ -95,17 +97,19 @@ WORKDIR /project
 ### -> stage release to build container running the app
 FROM base as release
 
-COPY Cargo.toml .
+ARG SERVICE=
 
+WORKDIR /project
+
+ENV PATH=${PATH}:/project/bin
+
+COPY ${SERVICE}/. .
+
+# fetch cargo dependencies
 RUN cargo fetch
 
-COPY ./src ./src
-
 # install all binaries
-RUN cargo install --bins \
-    # from the crate in path .
+RUN cargo install \
+    --bins \
     --path . \
-    # into directory .
-     --root .
-
-CMD ["app", "--connect", "tcp://validator:4004", "-vv"]
+    --root .

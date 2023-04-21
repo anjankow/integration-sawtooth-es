@@ -17,6 +17,14 @@ version: "3.4"
 
 services:
 
+  # es_mirror_blkchn:
+  #   build:
+  #     context: es_mirror_blkchn/
+  #   #   target: dev
+  #   container_name: bonnyledger-tp
+  #   depends_on:
+  #     - validator
+
 ################################################################
 ############              BLOCKCHAIN                ############
 ################################################################
@@ -32,8 +40,12 @@ services:
 
   bonnyledger-tp:
     build:
-      context: bonnyledger-tp/
-    #   target: dev
+      dockerfile: docker/Dockerfile.rust
+      context: .
+      args:
+        - SERVICE=bonnyledger-tp
+      target: release
+    entrypoint: ["app", "--connect", "tcp://validator:4004", "-vv"]
     container_name: bonnyledger-tp
     depends_on:
       - validator
