@@ -5,6 +5,8 @@ extern crate sawtooth;
 extern crate sawtooth_sdk;
 extern crate zmq;
 
+mod event_listener;
+
 const DEFAULT_ZMQ_PRODUCER_ADDR: &str = "tcp://validator:4004";
 
 fn main() {
