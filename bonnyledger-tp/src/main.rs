@@ -22,13 +22,13 @@ extern crate clap;
 extern crate crypto;
 #[macro_use]
 extern crate log;
-extern crate bonny_ledger;
+extern crate bonnyledger_tp;
 extern crate log4rs;
 extern crate protobuf;
 extern crate rustc_serialize;
 extern crate sawtooth_sdk;
 
-use bonny_ledger::handlers::handlers::BonnyLedgerTransactionHandler;
+use bonnyledger_tp::handlers::handlers::BonnyLedgerTransactionHandler;
 use log::LevelFilter;
 use log4rs::append::console::ConsoleAppender;
 use log4rs::config::{Appender, Config, Root};
@@ -36,7 +36,7 @@ use log4rs::encode::pattern::PatternEncoder;
 use std::process;
 
 fn main() {
-    let matches = clap_app!(bonny_ledger =>
+    let matches = clap_app!(bonnyledger_tp =>
          (version: crate_version!())
          (about: "Bonny-Ledger Transaction Processor")
          (@arg connect: -C --connect +takes_value

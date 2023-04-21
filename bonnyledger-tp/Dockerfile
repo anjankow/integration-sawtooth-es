@@ -87,6 +87,7 @@ RUN mkdir -p /home/$USERNAME/.vscode-server/extensions \
 ### end from https://github.com/allaboutapps/go-starter/blob/go-starter-2023-03-03/Dockerfile
 ###
 
+## install additional cargo tools
 RUN cargo install cargo-modules
 
 WORKDIR /project

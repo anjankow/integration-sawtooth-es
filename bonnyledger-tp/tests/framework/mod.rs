@@ -1,19 +1,14 @@
-extern crate bonny_ledger;
 extern crate bytes;
 extern crate crypto;
-extern crate ecdsa;
-extern crate error_chain;
-// extern crate one_cell;
 extern crate protobuf;
 extern crate rand;
 extern crate reqwest;
-extern crate rstest;
 extern crate sawtooth;
 extern crate sawtooth_sdk;
 extern crate serde;
 extern crate serde_json;
 extern crate strum_macros;
-extern crate url;
+
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -66,7 +61,7 @@ pub fn make_transaction_header(
         batcher_public_key: signer_pub_key.as_hex(),
         signer_public_key: signer_pub_key.as_hex(),
 
-        family_name: bonny_ledger::FAMILY_NAME.to_string(),
+        family_name: bonnyledger_tp::FAMILY_NAME.to_string(),
         family_version: FAMILY_VERSION.to_string(),
 
         payload_sha512,

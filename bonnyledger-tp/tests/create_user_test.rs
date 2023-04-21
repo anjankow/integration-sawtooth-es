@@ -1,25 +1,20 @@
-extern crate bonny_ledger;
-extern crate bytes;
-extern crate crypto;
-extern crate ecdsa;
-extern crate error_chain;
+extern crate bonnyledger_tp;
 extern crate protobuf;
 extern crate rand;
 extern crate reqwest;
-extern crate rstest;
 extern crate sawtooth;
 extern crate sawtooth_sdk;
 extern crate serde;
 extern crate serde_json;
 extern crate strum_macros;
-extern crate url;
+
 
 mod framework;
 
 #[cfg(test)]
 mod tests {
-    use bonny_ledger::address::users;
-    use bonny_ledger::protos::{self, ledger::LedgerTransactionPayload_PayloadType};
+    use bonnyledger_tp::address::users;
+    use bonnyledger_tp::protos::{self, ledger::LedgerTransactionPayload_PayloadType};
 
     use crate::framework::*;
     use protobuf::{Message, RepeatedField};
@@ -62,7 +57,7 @@ mod tests {
         res.is_err()
             .then(|| println!("Error when posting batch: {}", res.unwrap_err()));
 
-        let state: bonny_ledger::protos::ledger::User = get_state(user_address).await;
+        let state: bonnyledger_tp::protos::ledger::User = get_state(user_address).await;
 
         assert_eq!(state.get_username(), username.to_string());
     }
