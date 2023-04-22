@@ -13,27 +13,27 @@ pub trait EventListener {
 }
 
 #[derive(Debug)]
-pub struct Error {
-    error: Option<Box<dyn std::error::Error>>,
+pub enum Error {
+    GenericError(Box<dyn std::error::Error>),
+    SubscriptionError(String),
 }
 
-impl Error {
-    fn new(error: &dyn std::error::Error) -> Error {
-        Error {
-            error: Some(error.into()),
-        }
-    }
-}
-
-impl<'err, E: std::error::Error + 'err> From<E> for Error {
+impl<E: std::error::Error + 'static> From<E> for Error {
     fn from(error: E) -> Self {
-        Error::new(&error)
+        Self::GenericError(Box::from(error))
     }
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Operation failed: {}", self.to_string())
+        match self {
+            Error::GenericError(error) => {
+                write!(f, "Operation failed: {}", error)
+            }
+            Error::SubscriptionError(reason) => {
+                write!(f, "Failed to subscribe: {}", reason)
+            }
+        }
     }
 }
 
@@ -41,32 +41,14 @@ pub mod zmq {
     extern crate rand;
     extern crate zmq as zmq_lib;
 
-    use std::{collections::HashMap, default, ops::Sub};
+    use std::collections::HashMap;
 
     use protobuf::Message;
-    use rand::{distributions::DistString, prelude::Distribution};
+    use rand::distributions::DistString;
 
     use super::Error;
 
     type EventType = String;
-
-    #[derive(Debug)]
-    struct SubscriptionError {
-        reason: String,
-    }
-
-    impl SubscriptionError {
-        fn new(error_msg: String) -> SubscriptionError {
-            SubscriptionError { reason: error_msg }
-        }
-    }
-    impl std::error::Error for SubscriptionError {}
-
-    impl std::fmt::Display for SubscriptionError {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "Failed to subscribe: {}", self.reason)
-        }
-    }
 
     pub struct ZmqEventListener {
         ctx: zmq::Context,
@@ -117,7 +99,10 @@ pub mod zmq {
         // based on https://sawtooth.hyperledger.org/docs/1.2/app_developers_guide/event_subscriptions.html
         fn exec_subscribe(&self) -> Result<(), crate::event_listener::Error> {
             if self.subscriptions.len() == 0 {
-                return Err(SubscriptionError::new("No subscriptions given".to_string()).into());
+                return Err(crate::event_listener::Error::SubscriptionError(
+                    "No subscriptions given".to_string(),
+                )
+                .into());
             }
             let event_subscribe_req =
                 sawtooth_sdk::messages::client_event::ClientEventsSubscribeRequest {
@@ -153,7 +138,7 @@ pub mod zmq {
 
             // and verify the the subscription succeeded
             if validator_resp.get_message_type() == sawtooth_sdk::messages::validator::Message_MessageType::CLIENT_EVENTS_SUBSCRIBE_RESPONSE {
-                return Err(SubscriptionError::new(format!("Invalid response message type: {:?}", validator_resp.get_message_type())).into())
+                return Err(Error::SubscriptionError(format!("Invalid response message type: {:?}", validator_resp.get_message_type())).into())
             }
 
             let content = validator_resp.get_content();
@@ -165,7 +150,7 @@ pub mod zmq {
                 sawtooth_sdk::messages::client_event::ClientEventsSubscribeResponse_Status::OK => {
                     Ok(())
                 }
-                _ => Err(SubscriptionError::new(format!(
+                _ => Err(Error::SubscriptionError(format!(
                     "Invalid subscription status: {:?}",
                     subscription_resp.get_status()
                 ))
