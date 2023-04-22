@@ -262,6 +262,7 @@ dependencies = [
  "config",
  "futures",
  "protobuf",
+ "rand 0.8.5",
  "reqwest",
  "sawtooth",
  "sawtooth-sdk",
