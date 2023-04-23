@@ -1,4 +1,4 @@
-pub type Handler = fn();
+pub type Handler = fn(sawtooth_sdk::messages::events::Event);
 
 pub trait EventListener {
     // one handler is assigned to one event type
@@ -7,15 +7,16 @@ pub trait EventListener {
         event_subscription: &sawtooth_sdk::messages::events::EventSubscription,
         handler: Handler,
     ) -> Result<(), Error>;
-    // fn unsubscribe(event_type: String);
-    fn start_listening(&self);
-    fn stop_listening(&self);
+
+    fn start_listening(&mut self) -> Result<(), Error>;
+    fn stop_listening(&mut self) -> Result<(), Error>;
 }
 
 #[derive(Debug)]
 pub enum Error {
     GenericError(Box<dyn std::error::Error>),
     SubscriptionError(String),
+    EventProcessError(String),
 }
 
 impl<E: std::error::Error + 'static> From<E> for Error {
@@ -33,13 +34,17 @@ impl std::fmt::Display for Error {
             Error::SubscriptionError(reason) => {
                 write!(f, "Failed to subscribe: {}", reason)
             }
+            Error::EventProcessError(reason) => {
+                write!(f, "{}", reason)
+            }
         }
     }
 }
 
 pub mod zmq {
-    extern crate rand;
-    extern crate zmq as zmq_lib;
+    use log;
+    use rand;
+    use zmq as zmq_lib;
 
     use std::collections::HashMap;
 
@@ -56,25 +61,11 @@ pub mod zmq {
 
         validator_endpoint: String,
         subscriptions: Vec<sawtooth_sdk::messages::events::EventSubscription>,
-
         handlers: HashMap<EventType, crate::event_listener::Handler>,
     }
 
-    pub fn new(validator_endpoint: String) -> Result<ZmqEventListener, zmq::Error> {
-        let ctx = zmq::Context::new();
-        let socket = ctx.socket(zmq::DEALER)?;
-        socket.connect(&validator_endpoint)?;
-        return Ok(ZmqEventListener {
-            ctx,
-            socket,
-            validator_endpoint,
-            subscriptions: vec![],
-            handlers: HashMap::new(),
-        });
-    }
-
     impl super::EventListener for ZmqEventListener {
-        fn stop_listening(&self) {
+        fn stop_listening(&mut self) -> Result<(), crate::event_listener::Error> {
             todo!()
         }
 
@@ -90,12 +81,30 @@ pub mod zmq {
             Ok(())
         }
 
-        fn start_listening(&self) {
-            todo!()
+        fn start_listening(&mut self) -> Result<(), crate::event_listener::Error> {
+            // first send the subscription message
+            self.exec_subscribe()?;
+
+            self.listen_loop()
         }
     }
 
     impl ZmqEventListener {
+        pub fn new(validator_endpoint: String) -> Result<ZmqEventListener, zmq::Error> {
+            let ctx = zmq::Context::new();
+
+            let socket = ctx.socket(zmq::DEALER)?;
+            socket.connect(&validator_endpoint)?;
+
+            return Ok(ZmqEventListener {
+                ctx,
+                socket,
+                validator_endpoint,
+                subscriptions: vec![],
+                handlers: HashMap::new(),
+            });
+        }
+
         // based on https://sawtooth.hyperledger.org/docs/1.2/app_developers_guide/event_subscriptions.html
         fn exec_subscribe(&self) -> Result<(), crate::event_listener::Error> {
             if self.subscriptions.len() == 0 {
@@ -113,7 +122,6 @@ pub mod zmq {
             let event_subscribe_req = event_subscribe_req.write_to_bytes().map_err(Error::from)?;
 
             // and create a message understandable for the validator
-            // let correlation_id :String =
             let correlation_id =
                 rand::distributions::Alphanumeric.sample_string(&mut rand::thread_rng(), 8);
 
@@ -137,14 +145,13 @@ pub mod zmq {
             validator_resp.merge_from_bytes(&resp.to_vec())?;
 
             // and verify the the subscription succeeded
-            if validator_resp.get_message_type() == sawtooth_sdk::messages::validator::Message_MessageType::CLIENT_EVENTS_SUBSCRIBE_RESPONSE {
+            if validator_resp.get_message_type() != sawtooth_sdk::messages::validator::Message_MessageType::CLIENT_EVENTS_SUBSCRIBE_RESPONSE {
                 return Err(Error::SubscriptionError(format!("Invalid response message type: {:?}", validator_resp.get_message_type())).into())
             }
 
-            let content = validator_resp.get_content();
             let mut subscription_resp =
                 sawtooth_sdk::messages::client_event::ClientEventsSubscribeResponse::new();
-            subscription_resp.merge_from_bytes(content)?;
+            subscription_resp.merge_from_bytes(&validator_resp.content)?;
 
             match subscription_resp.get_status() {
                 sawtooth_sdk::messages::client_event::ClientEventsSubscribeResponse_Status::OK => {
@@ -157,5 +164,76 @@ pub mod zmq {
                 .into()),
             }
         }
+
+        fn process_message(
+            &self,
+            message_raw: zmq_lib::Message,
+        ) -> Result<(), crate::event_listener::Error> {
+            let mut event = sawtooth_sdk::messages::events::Event::new();
+            match event.merge_from_bytes(&message_raw.to_vec()).err() {
+                Some(_) => {
+                    log::debug!("Received a non-event message, skipping");
+                    return Ok(());
+                }
+                None => (),
+            }
+
+            log::debug!("Received an event: {:?}", event);
+            let handler = self.handlers.get(&event.event_type).ok_or_else(|| {
+                crate::event_listener::Error::EventProcessError(
+                    "Handler for this event type is missing".to_string(),
+                )
+            })?;
+
+            handler(event);
+
+            Ok(())
+        }
+
+        fn listen_loop(&self) -> Result<(), crate::event_listener::Error> {
+            loop {
+                // recevie a message
+                let mut message = zmq_lib::Message::new();
+                self.socket.recv(&mut message, 0)?;
+
+                // todo: handle in a separate thread/task
+                let process_res = self.process_message(message);
+                if process_res.is_err() {
+                    log::debug!("{}", process_res.unwrap_err())
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use crate::config;
+    #[test]
+    fn test_subscribe() {
+        let default_cfg = config::Config::get_default();
+        let event_type = "test";
+
+        let mut tokio_ctx = tokio_context::context::Context::new();
+        let mut listener = super::zmq::ZmqEventListener::new(default_cfg.validator_endpoint)
+            .expect("Failed to create new listener instance");
+        let subscription = sawtooth_sdk::messages::events::EventSubscription {
+            event_type: event_type.to_string(),
+
+            ..Default::default()
+        };
+        fn handler(event: sawtooth_sdk::messages::events::Event) {
+            println!("Handling {:?}", event);
+        }
+
+        listener.subscribe(&subscription, handler).unwrap();
+
+        listener
+            .start_listening()
+            .expect("Failed to start listening");
+
+        listener.stop_listening().expect("Failed to stop listening");
     }
 }
