@@ -44,9 +44,10 @@ impl std::fmt::Display for Error {
 pub mod zmq {
     use log;
     use rand;
+    use threadpool::ThreadPool;
     use zmq as zmq_lib;
 
-    use std::collections::HashMap;
+    use std::{collections::HashMap, thread};
 
     use protobuf::Message;
     use rand::distributions::DistString;
@@ -57,7 +58,7 @@ pub mod zmq {
 
     pub struct ZmqEventListener {
         ctx: zmq::Context,
-        thread_pool: threadpool::ThreadPool,
+        thread_num: usize,
 
         validator_endpoint: String,
         subscriptions: Vec<sawtooth_sdk::messages::events::EventSubscription>,
@@ -82,109 +83,124 @@ pub mod zmq {
         }
 
         fn start_listening(&mut self) -> Result<(), crate::event_listener::Error> {
-            // first send the subscription message
-            let socket = self.exec_subscribe()?;
+            let socket = exec_subscribe(
+                &self.ctx,
+                self.validator_endpoint.as_str(),
+                &self.subscriptions,
+            )?;
+            let handler = self.handlers.clone();
+            let thread_num = self.thread_num;
 
-            self.listen_loop(socket)
+            std::thread::spawn(move || listen_loop(socket, handler, thread_num));
+            Ok(())
         }
     }
 
     impl ZmqEventListener {
         pub fn new(
             validator_endpoint: String,
-            num_threads: usize,
+            thread_num: usize,
         ) -> Result<ZmqEventListener, zmq::Error> {
             let ctx = zmq::Context::new();
 
             return Ok(ZmqEventListener {
                 ctx,
-                thread_pool: threadpool::ThreadPool::new(num_threads),
+                thread_num,
                 validator_endpoint,
                 subscriptions: vec![],
                 handlers: HashMap::new(),
             });
         }
+    }
 
-        // based on https://sawtooth.hyperledger.org/docs/1.2/app_developers_guide/event_subscriptions.html
-        fn exec_subscribe(&self) -> Result<(zmq_lib::Socket), crate::event_listener::Error> {
-            let socket = self.ctx.socket(zmq::DEALER)?;
-            socket.connect(&self.validator_endpoint)?;
-            if self.subscriptions.len() == 0 {
-                return Err(crate::event_listener::Error::SubscriptionError(
-                    "No subscriptions given".to_string(),
-                )
-                .into());
-            }
-            let event_subscribe_req =
-                sawtooth_sdk::messages::client_event::ClientEventsSubscribeRequest {
-                    subscriptions: protobuf::RepeatedField::from_vec(self.subscriptions.clone()),
-                    ..Default::default()
-                };
-            // serialize it
-            let event_subscribe_req = event_subscribe_req.write_to_bytes().map_err(Error::from)?;
-
-            // and create a message understandable for the validator
-            let correlation_id =
-                rand::distributions::Alphanumeric.sample_string(&mut rand::thread_rng(), 8);
-
-            let message = sawtooth_sdk::messages::validator::Message {
-                correlation_id,
-                message_type: sawtooth_sdk::messages::validator::Message_MessageType::CLIENT_EVENTS_SUBSCRIBE_REQUEST,
-                content: event_subscribe_req,
-                ..Default::default()
-            };
-            let message = message.write_to_bytes()?;
-
-            // send the message over the socket
-            socket.send(message, 0)?;
-
-            // and receive a response with the correlation id
-            let mut resp = zmq_lib::Message::new();
-            socket.recv(&mut resp, 0)?;
-
-            // deserialize the response
-            let mut validator_resp = sawtooth_sdk::messages::validator::Message::new();
-            validator_resp.merge_from_bytes(&resp.to_vec())?;
-
-            // and verify the the subscription succeeded
-            if validator_resp.get_message_type() != sawtooth_sdk::messages::validator::Message_MessageType::CLIENT_EVENTS_SUBSCRIBE_RESPONSE {
-                return Err(Error::SubscriptionError(format!("Invalid response message type: {:?}", validator_resp.get_message_type())).into())
-            }
-
-            let mut subscription_resp =
-                sawtooth_sdk::messages::client_event::ClientEventsSubscribeResponse::new();
-            subscription_resp.merge_from_bytes(&validator_resp.content)?;
-
-            match subscription_resp.get_status() {
-                sawtooth_sdk::messages::client_event::ClientEventsSubscribeResponse_Status::OK => {
-                    Ok(socket)
+    fn listen_loop(
+        socket: zmq_lib::Socket,
+        handlers: HashMap<EventType, crate::event_listener::Handler>,
+        thread_num: usize,
+    ) {
+        let thread_pool = threadpool::ThreadPool::new(thread_num);
+        loop {
+            // recevie a message
+            let mut message = zmq_lib::Message::new();
+            match socket.recv(&mut message, 0) {
+                Err(err) => {
+                    log::error!("Failed to receive, stopping the loop: {}", err);
                 }
-                _ => Err(Error::SubscriptionError(format!(
-                    "Invalid subscription status: {:?}",
-                    subscription_resp.get_status()
-                ))
-                .into()),
+                Ok(_) => (),
+            }
+
+            match process_message(handlers.clone(), message) {
+                Err(err) => {
+                    log::debug!("Failed to process the message: {}", err)
+                }
+                Ok((event, handler)) => thread_pool.execute(move || handler(event)),
             }
         }
+    }
 
-        fn listen_loop(&self, socket: zmq_lib::Socket) -> Result<(), crate::event_listener::Error> {
-            loop {
-                // recevie a message
-                let mut message = zmq_lib::Message::new();
-                match socket.recv(&mut message, 0) {
-                    Err(err) => {
-                        log::error!("Failed to receive, stopping the loop: {}", err);
-                    }
-                    Ok(_) => (),
-                }
+    // based on https://sawtooth.hyperledger.org/docs/1.2/app_developers_guide/event_subscriptions.html
+    fn exec_subscribe(
+        ctx: &zmq_lib::Context,
+        validator_endpoint: &str,
+        subscriptions: &Vec<sawtooth_sdk::messages::events::EventSubscription>,
+    ) -> Result<(zmq_lib::Socket), crate::event_listener::Error> {
+        let socket = ctx.socket(zmq::DEALER)?;
+        socket.connect(validator_endpoint)?;
+        if subscriptions.len() == 0 {
+            return Err(crate::event_listener::Error::SubscriptionError(
+                "No subscriptions given".to_string(),
+            )
+            .into());
+        }
+        let event_subscribe_req =
+            sawtooth_sdk::messages::client_event::ClientEventsSubscribeRequest {
+                subscriptions: protobuf::RepeatedField::from_vec(subscriptions.clone()),
+                ..Default::default()
+            };
+        // serialize it
+        let event_subscribe_req = event_subscribe_req.write_to_bytes().map_err(Error::from)?;
 
-                match process_message(self.handlers.clone(), message) {
-                    Err(err) => {
-                        log::debug!("Failed to process the message: {}", err)
-                    }
-                    Ok((event, handler)) => self.thread_pool.execute(move || handler(event)),
-                }
+        // and create a message understandable for the validator
+        let correlation_id =
+            rand::distributions::Alphanumeric.sample_string(&mut rand::thread_rng(), 8);
+
+        let message = sawtooth_sdk::messages::validator::Message {
+            correlation_id,
+            message_type: sawtooth_sdk::messages::validator::Message_MessageType::CLIENT_EVENTS_SUBSCRIBE_REQUEST,
+            content: event_subscribe_req,
+            ..Default::default()
+        };
+        let message = message.write_to_bytes()?;
+
+        // send the message over the socket
+        socket.send(message, 0)?;
+
+        // and receive a response with the correlation id
+        let mut resp = zmq_lib::Message::new();
+        socket.recv(&mut resp, 0)?;
+
+        // deserialize the response
+        let mut validator_resp = sawtooth_sdk::messages::validator::Message::new();
+        validator_resp.merge_from_bytes(&resp.to_vec())?;
+
+        // and verify the the subscription succeeded
+        if validator_resp.get_message_type() != sawtooth_sdk::messages::validator::Message_MessageType::CLIENT_EVENTS_SUBSCRIBE_RESPONSE {
+            return Err(Error::SubscriptionError(format!("Invalid response message type: {:?}", validator_resp.get_message_type())).into())
+        }
+
+        let mut subscription_resp =
+            sawtooth_sdk::messages::client_event::ClientEventsSubscribeResponse::new();
+        subscription_resp.merge_from_bytes(&validator_resp.content)?;
+
+        match subscription_resp.get_status() {
+            sawtooth_sdk::messages::client_event::ClientEventsSubscribeResponse_Status::OK => {
+                Ok(socket)
             }
+            _ => Err(Error::SubscriptionError(format!(
+                "Invalid subscription status: {:?}",
+                subscription_resp.get_status()
+            ))
+            .into()),
         }
     }
 
