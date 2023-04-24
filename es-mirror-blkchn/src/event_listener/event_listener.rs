@@ -46,7 +46,8 @@ pub mod zmq {
     use rand;
     use zmq as zmq_lib;
 
-    use std::{collections::HashMap, fmt::Debug};
+    use core::time;
+    use std::{collections::HashMap, fmt::Debug, task::Poll};
 
     use protobuf::Message;
     use rand::distributions::DistString;
@@ -54,6 +55,9 @@ pub mod zmq {
     use super::Error;
 
     type EventType = String;
+
+    // specify timeout for socket poll
+    const POLL_TIMEOUT_MS: i64 = 1000;
 
     pub struct ZmqEventListener {
         ctx: zmq::Context,
@@ -110,7 +114,7 @@ pub mod zmq {
             let (tx, rx) = crossbeam_channel::bounded::<bool>(1);
             self.stop_chan = Some(tx);
 
-            log::info!("Starting listening");
+            log::info!("Starting listen loop");
             let join_handle =
                 std::thread::spawn(move || listen_loop(socket, rx, handler, thread_num));
             self.join_handle = Some(join_handle);
@@ -146,31 +150,30 @@ pub mod zmq {
     ) {
         let thread_pool = threadpool::ThreadPool::new(thread_num);
 
-        crossbeam_channel::select! {
+        log::info!("Listen loop started");
+        loop {
+            crossbeam_channel::select! {
 
-            recv(stop_chan)->_=>{
-                log::debug!("Received stop message, breaking the loop");
-                thread_pool.join();
+                recv(stop_chan)->_=>{
+                    log::debug!("Received stop message, breaking the loop");
+                    thread_pool.join();
 
-                log::debug!("Thread pool finished");
-            }
-            default() => {
-                log::info!("Listen loop started");
-                loop {
-                    // recevie a message
-                    let mut message = zmq_lib::Message::new();
-                    match socket.recv(&mut message, 0) {
+                    log::debug!("Thread pool finished");
+                    break;
+                }
+                default() => {
+
+                    match receive_and_process(&socket, &handlers){
                         Err(err) => {
-                            log::error!("Failed to receive, stopping the loop: {}", err);
-                        }
-                        Ok(_) => (),
-                    }
-
-                    match process_message(handlers.clone(), message) {
-                        Err(err) => {
-                            log::debug!("Failed to process the message: {}", err)
-                        }
-                        Ok((event, handler)) => {
+                            // error should come only from socket operations
+                            log::error!("Breaking the listening loop on error: {}", err);
+                            break;
+                        },
+                        Ok(None) => {
+                            // failed to parse the message or handler is missing
+                            // continue
+                        },
+                        Ok(Some((event, handler))) => {
                             log::debug!("Running handler for event type: {}", event.event_type);
                             thread_pool.execute(move || handler(event));
                         },
@@ -178,6 +181,46 @@ pub mod zmq {
                 }
             }
         }
+    }
+
+    fn receive_and_process(
+        socket: &zmq_lib::Socket,
+        handlers: &HashMap<EventType, crate::event_listener::Handler>,
+    ) -> Result<
+        Option<(
+            sawtooth_sdk::messages::events::Event,
+            crate::event_listener::Handler,
+        )>,
+        crate::event_listener::Error,
+    > {
+        // check if there is anything in the socket
+        let poll_res = socket.poll(zmq_lib::PollEvents::POLLIN, POLL_TIMEOUT_MS);
+        if poll_res.is_err() {
+            let err = poll_res.unwrap_err();
+            log::error!("Failed to poll the socket: {}", &err);
+            return Err(super::Error::from(err));
+        }
+
+        if poll_res.unwrap() < 1 {
+            // less than 1 message in the socket, return
+            return Ok(None);
+        }
+
+        // we know that something is there for sure -> receivie a message
+        let mut message = zmq_lib::Message::new();
+        socket
+            .recv(&mut message, 0)
+            .map_err(|err| super::Error::from(err))?;
+
+        Ok(process_message(&handlers, message)
+            // return the result as an option
+            .map(|res| (Some(res)))
+            // don't return an error here not to break the listening loop
+            // just log the error
+            .unwrap_or_else(|err| {
+                log::debug!("Process message failure: {}", err);
+                None
+            }))
     }
 
     // based on https://sawtooth.hyperledger.org/docs/1.2/app_developers_guide/event_subscriptions.html
@@ -247,7 +290,7 @@ pub mod zmq {
     }
 
     fn process_message(
-        handlers: HashMap<EventType, crate::event_listener::Handler>,
+        handlers: &HashMap<EventType, crate::event_listener::Handler>,
         message_raw: zmq_lib::Message,
     ) -> Result<
         (
