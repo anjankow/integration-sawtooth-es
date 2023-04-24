@@ -44,10 +44,9 @@ impl std::fmt::Display for Error {
 pub mod zmq {
     use log;
     use rand;
-    use threadpool::ThreadPool;
     use zmq as zmq_lib;
 
-    use std::{collections::HashMap, thread};
+    use std::{collections::HashMap, fmt::Debug};
 
     use protobuf::Message;
     use rand::distributions::DistString;
@@ -59,6 +58,8 @@ pub mod zmq {
     pub struct ZmqEventListener {
         ctx: zmq::Context,
         thread_num: usize,
+        stop_chan: Option<crossbeam_channel::Sender<bool>>,
+        join_handle: Option<std::thread::JoinHandle<()>>,
 
         validator_endpoint: String,
         subscriptions: Vec<sawtooth_sdk::messages::events::EventSubscription>,
@@ -67,7 +68,21 @@ pub mod zmq {
 
     impl super::EventListener for ZmqEventListener {
         fn stop_listening(&mut self) -> Result<(), crate::event_listener::Error> {
-            todo!()
+            if self.stop_chan.is_some() {
+                let stop_chan = self.stop_chan.take().unwrap();
+                stop_chan.send(true)?;
+                log::debug!("Sent a message to the stop channel");
+            }
+
+            if self.join_handle.is_some() {
+                log::debug!("Joining listener thread");
+
+                // result is unchecked because it's error only if the child thread panicked
+                // https://users.rust-lang.org/t/interpreting-error-from-thread-join-box-dyn-any-send/60844
+                _ = self.join_handle.take().unwrap().join();
+                log::debug!("Listener thread joined");
+            }
+            Ok(())
         }
 
         fn subscribe(
@@ -91,7 +106,15 @@ pub mod zmq {
             let handler = self.handlers.clone();
             let thread_num = self.thread_num;
 
-            std::thread::spawn(move || listen_loop(socket, handler, thread_num));
+            // channel to signal stopping the loop
+            let (tx, rx) = crossbeam_channel::bounded::<bool>(1);
+            self.stop_chan = Some(tx);
+
+            log::info!("Starting listening");
+            let join_handle =
+                std::thread::spawn(move || listen_loop(socket, rx, handler, thread_num));
+            self.join_handle = Some(join_handle);
+
             Ok(())
         }
     }
@@ -106,6 +129,8 @@ pub mod zmq {
             return Ok(ZmqEventListener {
                 ctx,
                 thread_num,
+                stop_chan: None,
+                join_handle: None,
                 validator_endpoint,
                 subscriptions: vec![],
                 handlers: HashMap::new(),
@@ -115,25 +140,42 @@ pub mod zmq {
 
     fn listen_loop(
         socket: zmq_lib::Socket,
+        stop_chan: crossbeam_channel::Receiver<bool>,
         handlers: HashMap<EventType, crate::event_listener::Handler>,
         thread_num: usize,
     ) {
         let thread_pool = threadpool::ThreadPool::new(thread_num);
-        loop {
-            // recevie a message
-            let mut message = zmq_lib::Message::new();
-            match socket.recv(&mut message, 0) {
-                Err(err) => {
-                    log::error!("Failed to receive, stopping the loop: {}", err);
-                }
-                Ok(_) => (),
-            }
 
-            match process_message(handlers.clone(), message) {
-                Err(err) => {
-                    log::debug!("Failed to process the message: {}", err)
+        crossbeam_channel::select! {
+
+            recv(stop_chan)->_=>{
+                log::debug!("Received stop message, breaking the loop");
+                thread_pool.join();
+
+                log::debug!("Thread pool finished");
+            }
+            default() => {
+                log::info!("Listen loop started");
+                loop {
+                    // recevie a message
+                    let mut message = zmq_lib::Message::new();
+                    match socket.recv(&mut message, 0) {
+                        Err(err) => {
+                            log::error!("Failed to receive, stopping the loop: {}", err);
+                        }
+                        Ok(_) => (),
+                    }
+
+                    match process_message(handlers.clone(), message) {
+                        Err(err) => {
+                            log::debug!("Failed to process the message: {}", err)
+                        }
+                        Ok((event, handler)) => {
+                            log::debug!("Running handler for event type: {}", event.event_type);
+                            thread_pool.execute(move || handler(event));
+                        },
+                    }
                 }
-                Ok((event, handler)) => thread_pool.execute(move || handler(event)),
             }
         }
     }
@@ -143,7 +185,7 @@ pub mod zmq {
         ctx: &zmq_lib::Context,
         validator_endpoint: &str,
         subscriptions: &Vec<sawtooth_sdk::messages::events::EventSubscription>,
-    ) -> Result<(zmq_lib::Socket), crate::event_listener::Error> {
+    ) -> Result<zmq_lib::Socket, crate::event_listener::Error> {
         let socket = ctx.socket(zmq::DEALER)?;
         socket.connect(validator_endpoint)?;
         if subscriptions.len() == 0 {
@@ -237,12 +279,22 @@ mod tests {
 
     use super::*;
     use crate::config;
+
+    fn init() {
+        let _ = env_logger::builder()
+            .target(env_logger::Target::Stdout)
+            .filter_level(log::LevelFilter::Trace)
+            .is_test(true)
+            .try_init();
+    }
+
     #[test]
-    fn test_subscribe() {
+    fn test_listen() {
+        init();
+
         let default_cfg = config::Config::get_default();
         let event_type = "test";
 
-        let mut tokio_ctx = tokio_context::context::Context::new();
         let mut listener = super::zmq::ZmqEventListener::new(default_cfg.validator_endpoint, 4)
             .expect("Failed to create new listener instance");
         let subscription = sawtooth_sdk::messages::events::EventSubscription {
@@ -254,14 +306,21 @@ mod tests {
             println!("Handling {:?}", event);
         }
 
+        // stop listening before starting - should have no impact
+        listener.stop_listening().expect("Failed to stop listening");
+
+        // subscribe
         listener.subscribe(&subscription, handler).unwrap();
 
-        std::thread::spawn(|| {
-            listener
-                .start_listening()
-                .expect("Failed to start listening")
-        });
+        // start listening
+        listener
+            .start_listening()
+            .expect("Failed to start listening");
 
+        // wait some time
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        // stop listening
         listener.stop_listening().expect("Failed to stop listening");
     }
 }
