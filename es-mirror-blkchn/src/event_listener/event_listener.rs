@@ -150,49 +150,31 @@ pub mod zmq {
     ) {
         let thread_pool = threadpool::ThreadPool::new(thread_num);
 
-        // fn process_message()
-
         log::info!("Listen loop started");
         loop {
             crossbeam_channel::select! {
 
-                    recv(stop_chan)->_=>{
-                        log::debug!("Received stop message, breaking the loop");
-                        thread_pool.join();
+            recv(stop_chan)->_=>{
+                log::debug!("Received stop message, breaking the loop");
+                thread_pool.join();
 
-                        log::debug!("Thread pool finished");
+                log::debug!("Thread pool finished");
+                break;
+            }
+            default() => {
+
+                match receive(&socket) {
+                    Ok(message_opt) => {
+                        if message_opt.is_some() {
+                        process_message(&message_opt.unwrap(), &thread_pool, &handlers);
+                        }
+                    },
+                    Err(err) => {
+                        // failed to receive - socket error
+                        log::error!("Breaking the listening loop on error: {}", err);
                         break;
                     }
-                    default() => {
-
-            match receive(&socket) {
-                Ok(message_opt) => {
-                    message_opt.map_or((),|message| {
-                        let _ = parse_message(&message)
-                            .map(|events| {
-                                for event in events {
-                                    handlers.get(&event.event_type).map(|&handler| {
-                                        log::debug!(
-                                            "Running handler for event type: {}",
-                                            &event.event_type
-                                        );
-                                        thread_pool.execute(move || handler(event));
-                                    });
-                                }
-                            })
-                            .map_err(|err| {
-                                log::debug!("Failed to parse the message: {}", err);
-                                err
-                            });
-                    });
-            },
-            Err(err) => {
-                // failed to receive - socket error
-                log::error!("Breaking the listening loop on error: {}", err);
-                // break;
-            }
-
-            };
+                };
             }
             }
         }
@@ -221,6 +203,64 @@ pub mod zmq {
             .map_err(|err| super::Error::from(err))?;
 
         Ok(Some(message))
+    }
+
+    fn process_message(
+        message: &zmq_lib::Message,
+        thread_pool: &threadpool::ThreadPool,
+        handlers: &HashMap<EventType, crate::event_listener::Handler>,
+    ) {
+        let _ = parse_message(&message).map(|events| {
+            for event in events {
+                handlers.get(&event.event_type).map(|&handler| {
+                    log::debug!("Running handler for event type: {}", &event.event_type);
+                    thread_pool.execute(move || handler(event));
+                });
+            }
+        });
+    }
+
+    fn parse_message(
+        message_raw: &zmq_lib::Message,
+    ) -> Result<
+        protobuf::RepeatedField<sawtooth_sdk::messages::events::Event>,
+        crate::event_listener::Error,
+    > {
+        // messages are sent as a validator message
+        let validator_msg = sawtooth_sdk::messages::validator::Message::parse_from_bytes(
+            &message_raw,
+        )
+        .map_err(|err| {
+            log::debug!("Message parsing error: {}, skipping", err);
+            crate::event_listener::Error::EventProcessError(
+                "Received a non-validator message".to_string(),
+            )
+        })?;
+        // check if the message type is Event, we listen only for such messages
+        if validator_msg.message_type
+            != sawtooth_sdk::messages::validator::Message_MessageType::CLIENT_EVENTS
+        {
+            log::debug!(
+                "Received a non-event message type: {:?}, skipping",
+                &validator_msg.message_type
+            );
+            return Err(crate::event_listener::Error::EventProcessError(
+                "Received a non-event message type".to_string(),
+            ));
+        }
+
+        // message holds a list of events, we need to unpack them
+        let events = sawtooth_sdk::messages::events::EventList::parse_from_bytes(
+            validator_msg.get_content(),
+        )
+        .map_err(|err| {
+            log::debug!("Failed to parse event message: {}, skipping", err);
+            crate::event_listener::Error::EventProcessError(
+                "Failed to parse event message".to_string(),
+            )
+        })?;
+
+        Ok(events.events)
     }
 
     // based on https://sawtooth.hyperledger.org/docs/1.2/app_developers_guide/event_subscriptions.html
@@ -287,49 +327,6 @@ pub mod zmq {
             ))
             .into()),
         }
-    }
-
-    fn parse_message(
-        message_raw: &zmq_lib::Message,
-    ) -> Result<
-        protobuf::RepeatedField<sawtooth_sdk::messages::events::Event>,
-        crate::event_listener::Error,
-    > {
-        // messages are sent as a validator message
-        let validator_msg = sawtooth_sdk::messages::validator::Message::parse_from_bytes(
-            &message_raw,
-        )
-        .map_err(|err| {
-            log::debug!("Message parsing error: {}, skipping", err);
-            crate::event_listener::Error::EventProcessError(
-                "Received a non-validator message".to_string(),
-            )
-        })?;
-        // check if the message type is Event, we listen only for such messages
-        if validator_msg.message_type
-            != sawtooth_sdk::messages::validator::Message_MessageType::CLIENT_EVENTS
-        {
-            log::debug!(
-                "Received a non-event message type: {:?}, skipping",
-                &validator_msg.message_type
-            );
-            return Err(crate::event_listener::Error::EventProcessError(
-                "Received a non-event message type".to_string(),
-            ));
-        }
-
-        // message holds a list of events, we need to unpack them
-        let events = sawtooth_sdk::messages::events::EventList::parse_from_bytes(
-            validator_msg.get_content(),
-        )
-        .map_err(|err| {
-            log::debug!("Failed to parse event message: {}, skipping", err);
-            crate::event_listener::Error::EventProcessError(
-                "Failed to parse event message".to_string(),
-            )
-        })?;
-
-        Ok(events.events)
     }
 }
 
