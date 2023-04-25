@@ -1,0 +1,6 @@
+{
+    "rust-analyzer.linkedProjects": [
+        "./es-mirror-blkchn/Cargo.toml",
+        "./bonnyledger-tp/Cargo.toml"
+    ]
+}
