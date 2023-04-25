@@ -349,24 +349,33 @@ mod tests {
         init();
 
         let default_cfg = config::Config::get_default();
-        let event_type = "sawtooth/block-commit";
+
+        // prepare event subscriptions
+        let subscription_block_commit = sawtooth_sdk::messages::events::EventSubscription {
+            event_type: "sawtooth/block-commit".to_string(),
+            ..Default::default()
+        };
+        let subscription_state_delta = sawtooth_sdk::messages::events::EventSubscription {
+            event_type: "sawtooth/state-delta".to_string(),
+            ..Default::default()
+        };
 
         let mut listener = super::zmq::ZmqEventListener::new(default_cfg.validator_endpoint, 4)
             .expect("Failed to create new listener instance");
-        let subscription = sawtooth_sdk::messages::events::EventSubscription {
-            event_type: event_type.to_string(),
-
-            ..Default::default()
-        };
-        fn handler(event: sawtooth_sdk::messages::events::Event) {
-            println!("Handling {:?}", event);
-        }
 
         // stop listening before starting - should have no impact
         listener.stop_listening().expect("Failed to stop listening");
 
         // subscribe
-        listener.subscribe(&subscription, handler).unwrap();
+        fn handler(event: sawtooth_sdk::messages::events::Event) {
+            println!("Handling {:?}", event);
+        }
+        listener
+            .subscribe(&subscription_block_commit, handler)
+            .unwrap();
+        listener
+            .subscribe(&subscription_state_delta, handler)
+            .unwrap();
 
         // start listening
         listener
@@ -377,6 +386,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_secs(1800));
 
         // stop listening
+        listener.stop_listening().expect("Failed to stop listening");
         listener.stop_listening().expect("Failed to stop listening");
     }
 }
