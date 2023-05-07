@@ -360,6 +360,11 @@ mod tests {
             ..Default::default()
         };
 
+        let subscription_custom = sawtooth_sdk::messages::events::EventSubscription {
+            event_type: "my_tf/something_wonderful_happened".to_string(),
+            ..Default::default()
+        };
+
         let mut listener = super::zmq::ZmqEventListener::new(default_cfg.validator_endpoint, 4)
             .expect("Failed to create new listener instance");
 
@@ -376,6 +381,7 @@ mod tests {
         listener
             .subscribe(&subscription_state_delta, handler)
             .unwrap();
+        listener.subscribe(&subscription_custom, handler).unwrap();
 
         // start listening
         listener

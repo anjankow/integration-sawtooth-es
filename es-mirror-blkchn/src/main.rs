@@ -6,6 +6,7 @@ extern crate sawtooth_sdk;
 extern crate zmq;
 
 mod config;
+mod es_mirror;
 mod event_listener;
 
 fn main() {
