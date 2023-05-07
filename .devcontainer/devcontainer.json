@@ -42,7 +42,7 @@
 	// "forwardPorts": [],
 
 	// Uncomment the next line if you want start specific services in your Docker Compose config.
-	"runServices": ["es01", "kibana"],
+	// "runServices": ["es01", "kibana", "rest-api"],
 
 	// Uncomment the next line if you want to keep your containers running after VS Code shuts down.
 	"shutdownAction": "stopCompose",

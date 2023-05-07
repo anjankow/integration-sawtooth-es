@@ -26,8 +26,9 @@ services:
       target: release
     container_name: es-mirror-blkchn
     depends_on:
-      - validator
       - es01
+      - rest-api
+      - bonnyledger-tp
 
 
 ################################################################
