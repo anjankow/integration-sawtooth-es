@@ -1,0 +1,78 @@
+// get last created document
+POST /blocks/_search
+{
+   "size": 1,
+   "sort": { "timestamp": "desc"},
+   "query": {
+      "match_all": {}
+   }
+}
+
+// set up index mapping
+PUT /blocks/_mapping
+{
+  "properties": {
+    "state_root_hash": {
+      "type": "keyword",
+      "index": true
+    },
+		"signer_public_key": {
+			"type": "keyword",
+			"index": true
+		},
+		"previous_block_id": {
+			"type": "keyword",
+			"index": true
+		},
+		"block_num": {
+			"type": "integer",
+			"index": true
+		},
+		"consensus": {
+			"type": "keyword",
+			"index": false
+		},
+		"timestamp": {
+		  "type": "date"
+		}
+  }
+}
+
+// create an ingest pipeline
+PUT _ingest/pipeline/blockchain-pipeline
+{
+  "description": "Pipeline runnig when adding blockchain data",
+  "processors": [
+	{
+	  "set": {
+		"field": "timestamp",
+		"value": "{{{_ingest.timestamp}}}",
+		"tag": "add-timestamp"
+	  }
+	},
+	{
+	  "fingerprint": {
+		"fields": [
+		  "state_root_hash",
+		  "header_signature",
+		  "signer_public_key",
+		  "previous_block_id"
+		],
+		"method": "SHA-256",
+		"tag": "fingerprint"
+	  }
+	}
+  ]
+}
+
+// create a doc running the ingest pipeline
+PUT /blocks/_doc/4?pipeline=blockchain-pipeline
+{
+  "block_num": "2",
+  "consensus": "RGV2bW9kZTufW4kbN0PPPZGjvfpwMGdE5f2t2XCboHPWu40YektM",
+  "previous_block_id": "d4cbac2dc3085f7f8eb263962b01d80235aa1659dabbd6591528dde59a26518656220761077ac1875a4947a83162ecca3cea72088ea85a1af5e1bb37314db502",
+  "signer_public_key": "029fb5093d8b71a16e401f6f1b67f57d66f8c6e07f5eec43155a9ecd30133533e4",
+  "state_root_hash": "a192f16117b74ce661c235c4860483fd03353208501828fb89ab2821cbc7d1ad",
+  "header_signature":"33acc2019c01400003dcbacb66a5012bbfba2c3c9adc3c4f89a1d84b4677c0e10afbe4cd2cadb38262fc5727d186e1f60cde7f93c4b0ef71c130c2e8aff95327"
+}
+
